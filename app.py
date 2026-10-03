@@ -1246,35 +1246,72 @@ else:
 
 with center:
 
-    # Open hero container
-    st.markdown(
+    components.html(
         """
-        <div class="co-hero">
-        """,
-        unsafe_allow_html=True,
-    )
+        <style>
+        .career-hero {
+            background: linear-gradient(
+                135deg,
+                #0f172a 0%,
+                #1e293b 45%,
+                #312e81 100%
+            );
+            border: 1px solid rgba(129, 140, 248, 0.35);
+            border-radius: 16px;
+            padding: 28px 30px;
+            box-shadow:
+                0 10px 40px rgba(0, 0, 0, 0.35),
+                0 0 0 1px rgba(129, 140, 248, 0.08);
+            font-family: sans-serif;
+        }
 
-    # Hero content
-    st.markdown(
-        "CareerOps AI",
-        help="CareerOps AI",
-    )
+        .career-kicker {
+            font-size: 12px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #a5b4fc;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
 
-    st.markdown(
-        "## Career Assistant AI"
-    )
+        .career-title {
+            font-size: 30px;
+            font-weight: 800;
+            color: #f8fafc;
+            margin: 0;
+            line-height: 1.2;
+        }
 
-    st.markdown(
-        "Configure the model in **Settings**. "
-        "Choose an agent and review past results in **Analysis**."
-    )
+        .career-sub {
+            color: #cbd5e1;
+            font-size: 15px;
+            margin-top: 10px;
+            line-height: 1.5;
+        }
 
-    # Close hero container
-    st.markdown(
-        """
+        .career-sub strong {
+            color: #e0e7ff;
+        }
+        </style>
+
+        <div class="career-hero">
+            <div class="career-kicker">
+                CareerOps AI
+            </div>
+
+            <div class="career-title">
+                Career Assistant AI
+            </div>
+
+            <div class="career-sub">
+                Configure the model in <strong>Settings</strong>.
+                Choose an agent and review past results in
+                <strong>Analysis</strong>.
+            </div>
         </div>
         """,
-        unsafe_allow_html=True,
+        height=170,
+        scrolling=False,
     )
     
     # ========================================================
