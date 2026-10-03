@@ -122,22 +122,42 @@ st.markdown(
 
     .co-hero {
         background: linear-gradient(
-            135deg,
-            #0f172a 0%,
-            #1e293b 40%,
-            #312e81 100%
+        135deg,
+        #0f172a 0%,
+        #1e293b 45%,
+        #312e81 100%
         );
-
         border: 1px solid rgba(129, 140, 248, 0.35);
         border-radius: 16px;
-        padding: 1.35rem 1.5rem 1.2rem 1.5rem;
-        margin-bottom: 0.75rem;
-
+        padding: 28px 30px;
+        margin-bottom: 14px;
         box-shadow:
             0 10px 40px rgba(0, 0, 0, 0.35),
             0 0 0 1px rgba(129, 140, 248, 0.08);
     }
 
+    .co-hero .stMarkdown {
+        margin-bottom: 0;
+    }
+
+    .co-hero h2 {
+        color: #f8fafc;
+        font-size: 30px;
+        font-weight: 800;
+        margin: 0;
+        line-height: 1.2;
+    }
+
+    .co-hero p {
+        color: #cbd5e1;
+        font-size: 15px;
+        line-height: 1.5;
+    }   
+
+    .co-hero strong {
+        color: #e0e7ff;
+    }
+        
     .co-kicker {
         font-size: 0.72rem;
         letter-spacing: 0.14em;
