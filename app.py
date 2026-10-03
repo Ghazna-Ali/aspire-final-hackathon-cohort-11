@@ -45,7 +45,7 @@ st.set_page_config(
 )
 
 # ============================================================
-# CSS (fixed look — no theme switcher)
+# CSS — dark prominent header
 # ============================================================
 st.markdown(
     """
@@ -54,10 +54,23 @@ st.markdown(
     div[data-testid="stToolbar"] { display: none; }
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
+
+    .stApp {
+        background: #0b1220;
+    }
     .block-container {
-        padding-top: 0.75rem;
+        padding-top: 0.85rem;
         padding-bottom: 1.5rem;
         max-width: 1400px;
+    }
+
+    /* Make main text readable on dark page */
+    .stApp, .stMarkdown, .stMarkdown p, label {
+        color: #e2e8f0;
+    }
+    div[data-testid="stCaptionContainer"],
+    div[data-testid="stCaptionContainer"] p {
+        color: #94a3b8 !important;
     }
 
     .co-scroll {
@@ -66,68 +79,77 @@ st.markdown(
         overflow-x: hidden;
         padding-right: 0.3rem;
         scrollbar-width: thin;
-        scrollbar-color: #94a3b8 transparent;
+        scrollbar-color: #475569 transparent;
     }
     .co-scroll::-webkit-scrollbar { width: 6px; }
     .co-scroll::-webkit-scrollbar-thumb {
-        background: #94a3b8;
+        background: #475569;
         border-radius: 999px;
     }
 
+    /* Prominent dark header */
     .co-hero {
-        background: linear-gradient(120deg, #ffffff 0%, #f8fafc 50%, #f1f5f9 100%);
-        border: 1px solid rgba(15, 23, 42, 0.08);
-        border-radius: 14px;
-        padding: 1.05rem 1.2rem 0.85rem 1.2rem;
-        margin-bottom: 0.35rem;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #312e81 100%);
+        border: 1px solid rgba(129, 140, 248, 0.35);
+        border-radius: 16px;
+        padding: 1.35rem 1.5rem 1.2rem 1.5rem;
+        margin-bottom: 0.75rem;
+        box-shadow:
+            0 10px 40px rgba(0, 0, 0, 0.35),
+            0 0 0 1px rgba(129, 140, 248, 0.08);
     }
     .co-kicker {
-        font-size: 0.68rem;
-        letter-spacing: 0.1em;
+        font-size: 0.72rem;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
-        color: #64748b;
-        font-weight: 600;
-        margin-bottom: 0.15rem;
+        color: #a5b4fc;
+        font-weight: 700;
+        margin-bottom: 0.35rem;
     }
     .co-hero-title {
-        font-size: 1.32rem;
-        font-weight: 700;
-        color: #0f172a;
+        font-size: 1.65rem;
+        font-weight: 800;
+        color: #f8fafc;
         margin: 0;
-        letter-spacing: -0.02em;
-        line-height: 1.25;
+        letter-spacing: -0.03em;
+        line-height: 1.2;
     }
     .co-hero-sub {
-        color: #64748b;
-        font-size: 0.86rem;
-        margin: 0.35rem 0 0 0;
-        line-height: 1.45;
-        max-width: 38rem;
+        color: #cbd5e1;
+        font-size: 0.92rem;
+        margin: 0.45rem 0 0 0;
+        line-height: 1.5;
+        max-width: 40rem;
     }
+    .co-hero-sub strong {
+        color: #e0e7ff;
+        font-weight: 600;
+    }
+
     .co-section-label {
         font-size: 0.72rem;
         font-weight: 700;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: #64748b;
+        color: #94a3b8;
         margin: 0.3rem 0 0.3rem 0;
     }
-    .co-muted { color: #64748b; font-size: 0.82rem; }
+    .co-muted { color: #94a3b8; font-size: 0.82rem; }
     .co-agent-pill {
         display: inline-block;
-        background: #eef2ff;
-        color: #3730a3;
+        background: #312e81;
+        color: #e0e7ff;
         border-radius: 999px;
-        padding: 0.2rem 0.65rem;
-        font-size: 0.78rem;
+        padding: 0.25rem 0.75rem;
+        font-size: 0.8rem;
         font-weight: 600;
-        margin: 0.3rem 0 0.45rem 0;
+        margin: 0.35rem 0 0.5rem 0;
+        border: 1px solid rgba(165, 180, 252, 0.35);
     }
     .co-field-label {
         font-size: 0.8rem;
         font-weight: 600;
-        color: #334155;
+        color: #e2e8f0;
         margin-bottom: 0.2rem;
     }
 
@@ -135,17 +157,33 @@ st.markdown(
         border-radius: 8px;
         font-weight: 600;
         font-size: 0.8rem;
-        padding-top: 0.3rem;
-        padding-bottom: 0.3rem;
-        min-height: 2rem;
-        border: 1px solid #e2e8f0;
-        background: #ffffff;
-        color: #0f172a;
+        padding-top: 0.35rem;
+        padding-bottom: 0.35rem;
+        min-height: 2.1rem;
+        border: 1px solid #334155;
+        background: #1e293b;
+        color: #f1f5f9;
+    }
+    div[data-testid="column"] div.stButton > button:hover {
+        border-color: #818cf8;
     }
     div.stButton > button[kind="primary"] {
-        background: #1e293b;
+        background: #4f46e5;
         color: #ffffff;
-        border: 1px solid #1e293b;
+        border: 1px solid #6366f1;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background: #4338ca;
+        border-color: #4338ca;
+    }
+
+    /* Inputs on dark background */
+    div[data-baseweb="select"] > div,
+    .stTextArea textarea,
+    .stTextInput input {
+        background-color: #0f172a !important;
+        color: #e2e8f0 !important;
+        border-color: #334155 !important;
     }
     </style>
     """,
@@ -408,7 +446,7 @@ if st.session_state.run_status == "running" and st.session_state.run_started_at:
         clear_run_state()
 
 # ============================================================
-# LAYOUT: Settings | Center | Analysis
+# LAYOUT
 # ============================================================
 left_open = st.session_state.left_open
 right_open = st.session_state.right_open
@@ -438,7 +476,7 @@ selected_agent = st.session_state.selected_agent
 run_busy = st.session_state.run_status == "running"
 
 # ============================================================
-# LEFT = SETTINGS (no theme)
+# SETTINGS (left)
 # ============================================================
 if left_panel is not None:
     with left_panel:
@@ -481,7 +519,7 @@ else:
             MODEL_READY = False
 
 # ============================================================
-# RIGHT = ANALYSIS
+# ANALYSIS (right)
 # ============================================================
 if right_panel is not None:
     with right_panel:
@@ -512,7 +550,7 @@ if right_panel is not None:
             label_visibility="collapsed",
             key="agent_select_box",
             disabled=run_busy,
-            help="Choose before running. Disabled only while a run is active.",
+            help="Choose before running.",
         )
         if not run_busy:
             st.session_state.selected_agent = selected_agent
@@ -615,8 +653,8 @@ with center:
             <div class="co-kicker">CareerOps AI</div>
             <div class="co-hero-title">Career operations workspace</div>
             <p class="co-hero-sub">
-                Use <strong>Settings</strong> for the model.
-                Use <strong>Analysis</strong> for agent, archive, and briefing.
+                Configure the model in <strong>Settings</strong>.
+                Choose an agent and review past results in <strong>Analysis</strong>.
             </p>
         </div>
         """,
