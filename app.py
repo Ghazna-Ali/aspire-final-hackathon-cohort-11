@@ -19,6 +19,7 @@ from agents import (
 from tasks import TASKS
 from tools import extract_cv_text
 from memory import CareerMemory
+from model_ui import render_model_selector
 
 # New features: Job Match Score, Skill Gap Detector,
 # Cover Letter Generation, Career Roadmap
@@ -144,6 +145,14 @@ TASKS.update(FEATURE_TASKS)
 
 
 # ============================================================
+# AI MODEL CONFIGURATION
+# ============================================================
+# All existing agents use the model selected in the sidebar.
+# Models without a configured API key remain visible but cannot run.
+MODEL_READY = render_model_selector(AGENTS)
+
+
+# ============================================================
 # SESSION STATE
 # ============================================================
 
@@ -190,12 +199,12 @@ def reset_everything():
 
 
 # ============================================================
-# GEMINI ERROR DETECTION
+# AI ERROR DETECTION
 # ============================================================
 
 def is_daily_quota_error(error):
     """
-    Detect Gemini daily/project/model quota exhaustion.
+    Detect provider daily/project/model quota exhaustion.
 
     These errors should NOT be retried immediately because
     retrying will not restore a daily quota.
@@ -209,6 +218,9 @@ def is_daily_quota_error(error):
         "QUOTA EXCEEDED",
         "QUOTA_EXCEEDED",
         "PERDAYPERPROJECTPERMODEL",
+        "RATE LIMIT",
+        "RATE_LIMIT_EXCEEDED",
+        "INSUFFICIENT_QUOTA",
     ]
 
     return any(pattern in message for pattern in quota_patterns)
@@ -412,22 +424,22 @@ def extract_result_text(result):
 
 def show_quota_error(error):
     st.error(
-        "Gemini API quota has been exhausted."
+        "The selected AI provider has reported a quota or usage limit."
     )
 
     st.markdown(
         """
-        Your Gemini project has reached its current API quota.
+        The selected provider/model has reached a quota or usage limit.
 
         This is different from a temporary API error, so the app
         will **not keep retrying automatically**.
 
         You can:
 
-        - Wait for the quota to reset
-        - Check your Gemini API usage
-        - Use a different Gemini project/API key
-        - Upgrade the applicable Gemini API plan
+        - Wait for the provider quota to reset
+        - Check the provider's API usage
+        - Select another configured model
+        - Add another provider API key in Streamlit Secrets
         """
     )
 
@@ -465,26 +477,9 @@ with st.sidebar:
 
     st.subheader("System Status")
 
-    try:
-        secret_key_exists = bool(
-            st.secrets.get("GEMINI_API_KEY")
-        )
-    except Exception:
-        secret_key_exists = False
-
-    environment_key_exists = bool(
-        os.getenv("GEMINI_API_KEY")
-        or os.getenv("GOOGLE_API_KEY")
-    )
-
-    gemini_key_exists = (
-        secret_key_exists or environment_key_exists
-    )
-
-    if gemini_key_exists:
-        st.success("Gemini API key detected")
-    else:
-        st.error("Gemini API key not detected")
+    # Provider/model availability is shown above in the AI Model section.
+    # Keep this area focused on application-level status.
+    st.success("Multi-provider AI configuration loaded")
 
     st.info(
         "Only the selected agent is executed when you click Run."
@@ -692,6 +687,13 @@ run_button = st.button(
 
 
 if run_button:
+
+    if not MODEL_READY:
+        st.error(
+            "The selected AI model is not available. "
+            "Configure its API key in Streamlit Secrets first."
+        )
+        st.stop()
 
     validation_errors = validate_inputs()
 
