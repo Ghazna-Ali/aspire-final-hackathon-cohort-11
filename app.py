@@ -661,7 +661,7 @@ with center:
         unsafe_allow_html=True,
     )
 
-    c1, c2, c3, c4 = st.columns([1.25, 1.25, 1.15, 2.4])
+    c1, c2, c3, c4 = st.columns([1.15, 1.15, 0.85, 3.0])
     with c1:
         label_l = "Hide Settings" if left_open else "Show Settings"
         if st.button(label_l, key="tog_left", use_container_width=True):
@@ -682,7 +682,6 @@ with center:
             f"Agent: **{selected_agent}**"
             + (" · run active" if run_busy else "")
         )
-
     st.markdown(
         f'<span class="co-agent-pill">{selected_agent}</span>',
         unsafe_allow_html=True,
