@@ -21,13 +21,19 @@ from crewai import LLM
 # forwards it, and Groq rejects it:
 #   "'messages.0' : property 'cache_breakpoint' is unsupported"
 #
-# We strip it at three levels so it is caught whichever path a given
+# We strip it at several levels so it is caught whichever path a given
 # crewai / litellm version takes:
+#   0. crewai  mark_cache_breakpoint              (stop the flag being set at all)
 #   1. crewai  LLM._format_messages_for_provider  (where it should be stripped)
 #   2. litellm completion / acompletion           (entry points)
 #   3. litellm GroqChatConfig.transform_request   (last step before the HTTP call)
+#
+# SANITIZER_LAYERS lists which layers were installed (see sanitizer_status()).
 # ---------------------------------------------------------------------------
 _UNSUPPORTED_MSG_KEYS = {"cache_breakpoint"}
+# Kept on the litellm module so it survives Streamlit module reloads.
+SANITIZER_LAYERS = getattr(litellm, "_msg_sanitizer_layers", None) or []
+litellm._msg_sanitizer_layers = SANITIZER_LAYERS
 
 
 def _clean_content(content):
@@ -61,6 +67,16 @@ def _install_message_sanitizer() -> None:
     if getattr(litellm, "_msg_sanitizer_installed", False):
         return
 
+    # 0) CrewAI: never set the flag (we only use Gemini / Groq / Cerebras,
+    #    none of which use it). Executors import this function at call time.
+    try:
+        import crewai.llms.cache as _cache
+
+        _cache.mark_cache_breakpoint = lambda message: message
+        SANITIZER_LAYERS.append("crewai.mark_cache_breakpoint")
+    except Exception:
+        pass
+
     # 1) CrewAI: clean messages when they are formatted for the provider.
     try:
         from crewai.llm import LLM as _CrewLLM
@@ -71,6 +87,7 @@ def _install_message_sanitizer() -> None:
             return _orig_fmt(self, _clean_messages(messages), *args, **kwargs)
 
         _CrewLLM._format_messages_for_provider = _safe_fmt
+        SANITIZER_LAYERS.append("crewai.format_messages")
     except Exception:
         pass
 
@@ -83,6 +100,7 @@ def _install_message_sanitizer() -> None:
         return _orig_completion(*args, **kwargs)
 
     litellm.completion = _safe_completion
+    SANITIZER_LAYERS.append("litellm.completion")
 
     if hasattr(litellm, "acompletion"):
         _orig_acompletion = litellm.acompletion
@@ -104,6 +122,7 @@ def _install_message_sanitizer() -> None:
             return _orig_transform(self, model, _clean_messages(messages), *args, **kwargs)
 
         GroqChatConfig.transform_request = _safe_transform
+        SANITIZER_LAYERS.append("groq.transform_request")
     except Exception:
         pass
 
@@ -111,6 +130,13 @@ def _install_message_sanitizer() -> None:
 
 
 _install_message_sanitizer()
+
+
+def sanitizer_status() -> str:
+    """Human-readable status, e.g. to show in the Streamlit sidebar."""
+    if not SANITIZER_LAYERS:
+        return "cache_breakpoint sanitizer: NOT active"
+    return "cache_breakpoint sanitizer active: " + ", ".join(SANITIZER_LAYERS)
 
 
 PLACEHOLDER_VALUES = {
