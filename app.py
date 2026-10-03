@@ -661,7 +661,7 @@ with center:
         unsafe_allow_html=True,
     )
 
-    c1, c2, pair = st.columns([1.2, 1.1, 3.8])
+    c1, c2, c3, c4 = st.columns([1.25, 1.25, 1.15, 2.4])
     with c1:
         label_l = "Hide Settings" if left_open else "Show Settings"
         if st.button(label_l, key="tog_left", use_container_width=True):
@@ -672,14 +672,12 @@ with center:
         if st.button(label_r, key="tog_right", use_container_width=True):
             st.session_state.right_open = not st.session_state.right_open
             st.rerun()
-    with pair:
-    b1, b2 = st.columns([1.1, 2.2])
-    with b1:
-        label_r = "Hide Analysis" if right_open else "Show Analysis"
-        if st.button(label_r, key="tog_right", use_container_width=True):
-            st.session_state.right_open = not st.session_state.right_open
-            st.rerun()
-    with b2:
+    with c3:
+        if st.session_state.run_status in ("running", "error"):
+            if st.button("Clear status", key="clear_run", use_container_width=True):
+                clear_run_state()
+                st.rerun()
+    with c4:
         st.caption(
             f"Agent: **{selected_agent}**"
             + (" · run active" if run_busy else "")
