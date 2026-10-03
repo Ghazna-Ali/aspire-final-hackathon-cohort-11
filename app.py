@@ -1,6 +1,7 @@
 import os
 import time
 import tempfile
+import uuid
 from datetime import datetime
 
 import streamlit as st
@@ -15,13 +16,11 @@ from agents import (
     interview_agent,
     critic_agent,
 )
-
 from tasks import TASKS
 from tools import extract_cv_text
 from memory import CareerMemory
 from model_ui import render_model_selector
 from report import build_pdf
-
 from features import (
     FEATURE_AGENTS,
     FEATURE_TASKS,
@@ -29,68 +28,126 @@ from features import (
     parse_match_score,
 )
 
-
-# ============================================================
-# PAGE CONFIGURATION
-# ============================================================
-
+# ------------------------------------------------------------
+# PAGE
+# ------------------------------------------------------------
 st.set_page_config(
     page_title="CareerOps AI",
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-
-# ============================================================
-# CUSTOM CSS
-# ============================================================
-
+# ------------------------------------------------------------
+# PROFESSIONAL CSS
+# ------------------------------------------------------------
 st.markdown(
     """
     <style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: 700;
+    /* Tighten Streamlit chrome */
+    header[data-testid="stHeader"] { background: transparent; }
+    div[data-testid="stToolbar"] { display: none; }
+    #MainMenu { visibility: hidden; }
+    footer { visibility: hidden; }
+    .block-container {
+        padding-top: 1.25rem;
+        padding-bottom: 2rem;
+        max-width: 1400px;
+    }
+
+    /* Cards */
+    .co-card {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 1rem 1.1rem;
+        margin-bottom: 0.75rem;
+        box-shadow: 0 1px 2px rgba(16,24,40,0.04);
+    }
+    .co-card-dark {
+        background: #0f172a;
+        color: #f8fafc;
+        border-radius: 10px;
+        padding: 1.1rem 1.25rem;
+        margin-bottom: 1rem;
+    }
+    .co-kicker {
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #64748b;
+        font-weight: 600;
         margin-bottom: 0.25rem;
     }
+    .co-title {
+        font-size: 1.55rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 0 0 0.15rem 0;
+    }
+    .co-sub {
+        color: #64748b;
+        font-size: 0.95rem;
+        margin-bottom: 0;
+    }
+    .co-agent-pill {
+        display: inline-block;
+        background: #eef2ff;
+        color: #3730a3;
+        border-radius: 999px;
+        padding: 0.25rem 0.75rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        margin-top: 0.5rem;
+    }
+    .co-section-label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin: 0.5rem 0 0.4rem 0;
+    }
+    .co-muted { color: #64748b; font-size: 0.85rem; }
 
-    .sub-header {
-        color: #6b7280;
-        font-size: 1.05rem;
-        margin-bottom: 1.5rem;
+    /* Buttons — sober, not playful */
+    div.stButton > button {
+        border-radius: 8px;
+        font-weight: 600;
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        color: #0f172a;
+    }
+    div.stButton > button[kind="primary"] {
+        background: #1e293b;
+        color: #ffffff;
+        border: 1px solid #1e293b;
+    }
+    div.stButton > button:hover {
+        border-color: #94a3b8;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background: #0f172a;
+        border-color: #0f172a;
     }
 
-    .agent-card {
-        padding: 1rem;
-        border-radius: 12px;
-        border: 1px solid #e5e7eb;
-        margin-bottom: 0.75rem;
-    }
-
-    .status-box {
-        padding: 1rem;
-        border-radius: 10px;
-        background: #f8fafc;
+    /* Archive list items */
+    .co-archive-item {
         border: 1px solid #e2e8f0;
-    }
-
-    .result-box {
-        padding: 1.25rem;
-        border-radius: 12px;
+        border-radius: 8px;
+        padding: 0.55rem 0.7rem;
+        margin-bottom: 0.4rem;
         background: #f8fafc;
-        border: 1px solid #e2e8f0;
+        font-size: 0.82rem;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-
-# ============================================================
-# AGENT REGISTRY
-# ============================================================
-
+# ------------------------------------------------------------
+# REGISTRIES
+# ------------------------------------------------------------
 AGENTS = {
     "Manager": manager_agent,
     "Job Analyst": job_analyst_agent,
@@ -101,90 +158,46 @@ AGENTS = {
     "Critic Agent": critic_agent,
 }
 
-
 AGENT_DESCRIPTIONS = {
-    "Manager": (
-        "Get a structured overview of your career situation, "
-        "job requirements, strengths, gaps, and next steps."
-    ),
-    "Job Analyst": (
-        "Analyze the job description, requirements, skills, "
-        "keywords, responsibilities, and qualifications."
-    ),
-    "CV Analyst": (
-        "Compare your CV against the target job and identify "
-        "matches, gaps, and CV improvement opportunities."
-    ),
-    "Research Agent": (
-        "Analyze company and opportunity information supplied "
-        "in your job description and career request."
-    ),
-    "Application Agent": (
-        "Create tailored application guidance, professional "
-        "summary, CV improvements, and cover-letter content."
-    ),
-    "Interview Agent": (
-        "Generate technical, behavioral, situational, and "
-        "job-specific interview preparation."
-    ),
-    "Critic Agent": (
-        "Review your application information and identify "
-        "weaknesses, missing evidence, gaps, and improvements."
-    ),
+    "Manager": "Structured overview: strengths, gaps, next steps.",
+    "Job Analyst": "Break down requirements, skills, and keywords.",
+    "CV Analyst": "CV vs job: matches, gaps, improvements.",
+    "Research Agent": "Company and opportunity signals from your text.",
+    "Application Agent": "Summaries, CV tweaks, cover-letter content.",
+    "Interview Agent": "Technical, behavioral, and situational prep.",
+    "Critic Agent": "Weaknesses and missing evidence in your materials.",
 }
-
-
-# ============================================================
-# NEW FEATURES (merged into the registries)
-# ============================================================
 
 AGENTS.update(FEATURE_AGENTS)
 AGENT_DESCRIPTIONS.update(FEATURE_DESCRIPTIONS)
 TASKS.update(FEATURE_TASKS)
 
-
-# ============================================================
-# AI MODEL CONFIGURATION (free-tier models only)
-# ============================================================
-# All agents use the model selected in the sidebar.
-# Models without a configured API key remain visible but cannot run.
-MODEL_READY = render_model_selector(AGENTS)
-
-
-# ============================================================
+# ------------------------------------------------------------
 # SESSION STATE
-# ============================================================
+# ------------------------------------------------------------
+defaults = {
+    "cv_text": "",
+    "job_description": "",
+    "career_request": "",
+    "selected_agent": "Job Analyst",
+    "result": "",
+    "result_agent": "",
+    "last_run_time": None,
+    "insight_archive": [],          # list of past runs
+    "active_insight_id": None,      # currently viewed archive item
+    "briefing_open": False,         # optional context panel
+    "chat_messages": [],            # lightweight briefing thread
+}
+for k, v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
-if "cv_text" not in st.session_state:
-    st.session_state.cv_text = ""
-
-if "job_description" not in st.session_state:
-    st.session_state.job_description = ""
-
-if "career_request" not in st.session_state:
-    st.session_state.career_request = ""
-
-if "selected_agent" not in st.session_state:
-    st.session_state.selected_agent = "Job Analyst"
-
-if "result" not in st.session_state:
-    st.session_state.result = ""
-
-if "result_agent" not in st.session_state:
-    st.session_state.result_agent = ""
-
-if "last_run_time" not in st.session_state:
-    st.session_state.last_run_time = None
-
-
-# ============================================================
-# RESET FUNCTIONS
-# ============================================================
 
 def reset_result():
     st.session_state.result = ""
     st.session_state.result_agent = ""
     st.session_state.last_run_time = None
+    st.session_state.active_insight_id = None
 
 
 def reset_everything():
@@ -195,16 +208,42 @@ def reset_everything():
     st.session_state.result = ""
     st.session_state.result_agent = ""
     st.session_state.last_run_time = None
+    st.session_state.insight_archive = []
+    st.session_state.active_insight_id = None
+    st.session_state.chat_messages = []
 
 
-# ============================================================
-# AI ERROR DETECTION
-# ============================================================
+def archive_insight(agent_name, text, career_request=""):
+    item = {
+        "id": str(uuid.uuid4()),
+        "agent": agent_name,
+        "text": text,
+        "career_request": career_request,
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+    st.session_state.insight_archive.insert(0, item)
+    # keep last 30
+    st.session_state.insight_archive = st.session_state.insight_archive[:30]
+    st.session_state.active_insight_id = item["id"]
+    return item
 
+
+def get_active_insight():
+    aid = st.session_state.active_insight_id
+    if not aid:
+        return None
+    for item in st.session_state.insight_archive:
+        if item["id"] == aid:
+            return item
+    return None
+
+
+# ------------------------------------------------------------
+# ERROR HELPERS
+# ------------------------------------------------------------
 def is_daily_quota_error(error):
-    """Detect provider daily/project/model quota exhaustion."""
     message = str(error).upper()
-    quota_patterns = [
+    patterns = [
         "GENERATEREQUESTSPERDAYPERPROJECTPERMODEL-FREETIER",
         "EXCEEDED YOUR CURRENT QUOTA",
         "QUOTA EXCEEDED",
@@ -214,455 +253,421 @@ def is_daily_quota_error(error):
         "RATE_LIMIT_EXCEEDED",
         "INSUFFICIENT_QUOTA",
     ]
-    return any(pattern in message for pattern in quota_patterns)
+    return any(p in message for p in patterns)
 
 
 def is_retryable_ai_error(error):
-    """Return True only for temporary errors that may recover."""
     if is_daily_quota_error(error):
         return False
-
     message = str(error).upper()
-    retryable_patterns = [
-        "503",
-        "SERVICE_UNAVAILABLE",
-        "UNAVAILABLE",
-        "429",
-        "RESOURCE_EXHAUSTED",
-        "RATE_LIMIT",
-        "TOO MANY REQUESTS",
-        "500",
-        "502",
-        "504",
-        "INTERNAL SERVER ERROR",
-        "BAD GATEWAY",
-        "GATEWAY TIMEOUT",
+    patterns = [
+        "503", "SERVICE_UNAVAILABLE", "UNAVAILABLE", "429",
+        "RESOURCE_EXHAUSTED", "RATE_LIMIT", "TOO MANY REQUESTS",
+        "500", "502", "504", "INTERNAL SERVER ERROR",
+        "BAD GATEWAY", "GATEWAY TIMEOUT",
     ]
-    return any(pattern in message for pattern in retryable_patterns)
+    return any(p in message for p in patterns)
 
-
-# ============================================================
-# CREW EXECUTION WITH RETRY
-# ============================================================
 
 def kickoff_with_retry(crew, inputs, max_attempts=4):
-    """
-    Run the selected agent crew.
-    Only temporary API failures are retried.
-    Daily quota exhaustion is returned immediately.
-    """
     delays = [5, 15, 30]
-
     for attempt in range(max_attempts):
         try:
             return crew.kickoff(inputs=inputs)
         except Exception as error:
-            if is_daily_quota_error(error):
-                raise error
-            if not is_retryable_ai_error(error):
+            if is_daily_quota_error(error) or not is_retryable_ai_error(error):
                 raise error
             if attempt == max_attempts - 1:
                 raise error
-
             delay = delays[min(attempt, len(delays) - 1)]
-            st.warning(
-                f"Temporary AI service error. "
-                f"Retrying in {delay} seconds..."
-            )
+            st.warning(f"Temporary service issue. Retrying in {delay}s…")
             time.sleep(delay)
 
 
-# ============================================================
-# CREATE SINGLE-AGENT CREW
-# ============================================================
-
 def create_single_agent_crew(agent_name):
-    """
-    Create a Crew containing exactly ONE agent and ONE task.
-    No other agent is included.
-    """
     if agent_name not in AGENTS:
         raise ValueError(f"Unknown agent: {agent_name}")
     if agent_name not in TASKS:
         raise ValueError(f"No task configured for: {agent_name}")
-
-    selected_agent = AGENTS[agent_name]
-    selected_task = TASKS[agent_name]
-
-    crew = Crew(
-        agents=[selected_agent],
-        tasks=[selected_task],
+    return Crew(
+        agents=[AGENTS[agent_name]],
+        tasks=[TASKS[agent_name]],
         process=Process.sequential,
         verbose=True,
     )
-    return crew
 
-
-# ============================================================
-# RUN SELECTED AGENT
-# ============================================================
 
 def run_selected_agent(agent_name, cv_text, job_description, career_request):
-    """Execute exactly one selected agent."""
     crew = create_single_agent_crew(agent_name)
-
     inputs = {
-        "cv_text": cv_text,
-        "job_description": job_description,
-        "career_request": career_request,
+        "cv_text": cv_text or "(not provided)",
+        "job_description": job_description or "(not provided)",
+        "career_request": career_request or "Produce the standard analysis for this agent.",
     }
-
-    memory = None
     try:
         memory = CareerMemory()
+        if hasattr(memory, "set_cv"):
+            memory.set_cv(cv_text)
+        if hasattr(memory, "set_job_description"):
+            memory.set_job_description(job_description)
+        if hasattr(memory, "set_career_request"):
+            memory.set_career_request(career_request)
     except Exception:
-        memory = None
+        pass
+    return kickoff_with_retry(crew, inputs)
 
-    if memory is not None:
-        try:
-            if hasattr(memory, "set_cv"):
-                memory.set_cv(cv_text)
-        except Exception:
-            pass
-        try:
-            if hasattr(memory, "set_job_description"):
-                memory.set_job_description(job_description)
-        except Exception:
-            pass
-        try:
-            if hasattr(memory, "set_career_request"):
-                memory.set_career_request(career_request)
-        except Exception:
-            pass
-
-    result = kickoff_with_retry(crew=crew, inputs=inputs)
-    return result
-
-
-# ============================================================
-# EXTRACT RESULT TEXT
-# ============================================================
 
 def extract_result_text(result):
-    """Convert CrewAI output into normal text."""
     if result is None:
         return ""
-    if hasattr(result, "raw"):
-        raw = result.raw
-        if raw is not None:
-            return str(raw)
+    if hasattr(result, "raw") and result.raw is not None:
+        return str(result.raw)
     return str(result)
 
 
-# ============================================================
-# QUOTA ERROR DISPLAY
-# ============================================================
-
 def show_quota_error(error):
-    st.error(
-        "The selected AI provider has reported a quota or usage limit."
-    )
-    st.markdown(
-        """
-        The selected provider/model has reached a quota or usage limit.
-
-        This is different from a temporary API error, so the app
-        will **not keep retrying automatically**.
-
-        You can:
-
-        - Wait for the provider quota to reset
-        - Check the provider's API usage
-        - Select another configured model
-        - Add another provider API key in Streamlit Secrets
-        """
-    )
-    with st.expander("Technical details"):
+    st.error("The selected provider hit a quota or usage limit.")
+    with st.expander("Details"):
         st.code(str(error))
 
 
-# ============================================================
-# SIDEBAR
-# ============================================================
-
-with st.sidebar:
-    st.header("⚙️ CareerOps AI")
-    st.markdown("---")
-
-    st.subheader("Agent")
-    selected_agent = st.selectbox(
-        "Choose one agent",
-        options=list(AGENTS.keys()),
-        index=list(AGENTS.keys()).index(st.session_state.selected_agent),
-    )
-    st.session_state.selected_agent = selected_agent
-    st.caption(AGENT_DESCRIPTIONS[selected_agent])
-
-    st.markdown("---")
-    st.subheader("System Status")
-    st.success("Multi-provider AI configuration loaded")
-    st.info("Only the selected agent is executed when you click Run.")
-
-    st.markdown("---")
-    if st.button("🗑️ Reset Everything", use_container_width=True):
-        reset_everything()
-        st.rerun()
-
-
-# ============================================================
-# HEADER
-# ============================================================
-
-st.markdown(
-    '<div class="main-header">🎯 CareerOps AI</div>',
-    unsafe_allow_html=True,
-)
-st.markdown(
-    '<div class="sub-header">AI-powered career operations assistant</div>',
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# CURRENT AGENT DISPLAY
-# ============================================================
-
-st.markdown(
-    f"""
-    <div class="agent-card">
-        <strong>Selected Agent:</strong> {selected_agent}<br>
-        <span>{AGENT_DESCRIPTIONS[selected_agent]}</span>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# CV SECTION
-# ============================================================
-
-st.header("📄 Candidate CV")
-
-cv_upload = st.file_uploader(
-    "Upload your CV",
-    type=["pdf", "docx", "txt"],
-    help="Upload a PDF, DOCX, or TXT CV.",
-)
-
-if cv_upload is not None:
-    try:
-        file_extension = os.path.splitext(cv_upload.name)[1].lower()
-
-        if file_extension == ".txt":
-            st.session_state.cv_text = cv_upload.read().decode(
-                "utf-8", errors="ignore"
-            )
-        else:
-            with tempfile.NamedTemporaryFile(
-                delete=False, suffix=file_extension
-            ) as temp_file:
-                temp_file.write(cv_upload.getbuffer())
-                temp_path = temp_file.name
-
-            try:
-                extracted_text = extract_cv_text.run(temp_path)
-                if extracted_text:
-                    st.session_state.cv_text = extracted_text
-            finally:
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
-
-        st.success(f"CV loaded: {cv_upload.name}")
-    except Exception as error:
-        st.error(f"Could not read the uploaded CV: {error}")
-
-cv_text_input = st.text_area(
-    "Or paste your CV here",
-    value=st.session_state.cv_text,
-    height=300,
-    placeholder="Paste your CV text here...",
-)
-st.session_state.cv_text = cv_text_input
-
-
-# ============================================================
-# JOB DESCRIPTION
-# ============================================================
-
-st.header("💼 Job Description")
-
-job_description_input = st.text_area(
-    "Paste the target job description",
-    value=st.session_state.job_description,
-    height=300,
-    placeholder="Paste the complete job description here...",
-)
-st.session_state.job_description = job_description_input
-
-
-# ============================================================
-# CAREER REQUEST
-# ============================================================
-
-st.header("🎯 Career Request")
-
-career_request_input = st.text_area(
-    "What do you want CareerOps AI to help you with?",
-    value=st.session_state.career_request,
-    height=180,
-    placeholder=(
-        "Example:\n"
-        "Analyze my fit for this position and tell me "
-        "what I should improve before applying."
-    ),
-)
-st.session_state.career_request = career_request_input
-
-
-# ============================================================
-# INPUT VALIDATION
-# ============================================================
-
 def validate_inputs():
+    """Career request is optional. CV + job are required for most agents."""
     errors = []
     if not st.session_state.cv_text.strip():
-        errors.append("Please provide your CV.")
+        errors.append("Add your CV (upload or paste).")
     if not st.session_state.job_description.strip():
-        errors.append("Please provide the job description.")
-    if not st.session_state.career_request.strip():
-        errors.append("Please describe what you want the agent to do.")
+        errors.append("Add the job description.")
     return errors
 
 
-# ============================================================
-# RUN BUTTON
-# ============================================================
+# ------------------------------------------------------------
+# RESULT MODULES (scannable UI, not walls of text)
+# ------------------------------------------------------------
+def render_modular_result(agent_name, text):
+    """Break long output into modules: score cards, sections, full text on demand."""
+    if not text:
+        st.info("No content.")
+        return
 
-st.markdown("---")
+    # Job Match Score → metrics + progress
+    if agent_name == "Job Match Score":
+        match = parse_match_score(text)
+        if match:
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                st.metric("Match", f"{match['overall']}%")
+                st.progress(match["overall"] / 100.0)
+            with c2:
+                if match.get("breakdown"):
+                    cols = st.columns(len(match["breakdown"]))
+                    for col, (cat, val) in zip(cols, match["breakdown"].items()):
+                        col.metric(cat.split()[0], f"{val}")
 
-run_button = st.button(
-    f"🚀 Run {selected_agent}",
-    type="primary",
-    use_container_width=True,
-)
+    # Legitimacy → highlight score line if present
+    if agent_name == "Job Legitimacy Check":
+        import re
+        m = re.search(r"Legitimacy Score:\s*(\d{1,3})", text, re.I)
+        if m:
+            score = min(100, max(0, int(m.group(1))))
+            st.metric("Legitimacy score", f"{score}/100")
+            st.progress(score / 100.0)
 
-if run_button:
-    if not MODEL_READY:
-        st.error(
-            "The selected AI model is not available. "
-            "Configure its API key in Streamlit Secrets first."
-        )
-        st.stop()
-
-    validation_errors = validate_inputs()
-
-    if validation_errors:
-        for error in validation_errors:
-            st.warning(error)
+    # Section chips from markdown headings
+    import re
+    sections = re.split(r"(?m)^##\s+", text)
+    if len(sections) > 1:
+        st.markdown('<div class="co-section-label">Modules</div>', unsafe_allow_html=True)
+        # first chunk may be preamble
+        for block in sections[1:]:
+            lines = block.strip().split("\n", 1)
+            title = lines[0].strip()
+            body = lines[1].strip() if len(lines) > 1 else ""
+            with st.expander(title, expanded=False):
+                st.markdown(body if body else "_No detail._")
+        with st.expander("Full report", expanded=False):
+            st.markdown(text)
     else:
-        reset_result()
-        st.session_state.selected_agent = selected_agent
-
-        with st.spinner(f"Running {selected_agent}..."):
-            try:
-                result = run_selected_agent(
-                    agent_name=selected_agent,
-                    cv_text=st.session_state.cv_text,
-                    job_description=st.session_state.job_description,
-                    career_request=st.session_state.career_request,
-                )
-
-                result_text = extract_result_text(result)
-                st.session_state.result = result_text
-                st.session_state.result_agent = selected_agent
-                st.session_state.last_run_time = datetime.now().strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-                st.success(f"{selected_agent} completed successfully.")
-
-            except Exception as error:
-                if is_daily_quota_error(error):
-                    show_quota_error(error)
-                else:
-                    st.error(
-                        "The selected agent could not complete the request."
-                    )
-                    with st.expander("Technical error details"):
-                        st.code(str(error))
+        with st.expander("Full report", expanded=True):
+            st.markdown(text)
 
 
-# ============================================================
-# RESULTS
-# ============================================================
+# ------------------------------------------------------------
+# LAYOUT: LEFT | CENTER | RIGHT
+# ------------------------------------------------------------
+left, center, right = st.columns([1.05, 2.4, 1.15], gap="medium")
 
-if st.session_state.result:
+# ====================== LEFT: model, status, reset ======================
+with left:
+    st.markdown('<div class="co-section-label">Workspace</div>', unsafe_allow_html=True)
+    MODEL_READY = render_model_selector(AGENTS, container=left)
+
+    st.markdown('<div class="co-section-label">Status</div>', unsafe_allow_html=True)
+    if MODEL_READY:
+        st.success("Model ready")
+    else:
+        st.warning("Configure an API key to run")
+    st.caption("One agent runs per action. Past outputs stay in Insight Archive.")
+
     st.markdown("---")
-    st.header(f"📊 {st.session_state.result_agent} Result")
+    if st.button("Reset workspace", use_container_width=True):
+        reset_everything()
+        st.rerun()
 
-    if st.session_state.last_run_time:
-        st.caption(f"Completed: {st.session_state.last_run_time}")
+# ====================== RIGHT: agent + insight archive + briefing ======================
+with right:
+    st.markdown('<div class="co-section-label">Analysis type</div>', unsafe_allow_html=True)
 
-    # Match score meter (Job Match Score only)
-    if st.session_state.result_agent == "Job Match Score":
-        match_score = parse_match_score(st.session_state.result)
-        if match_score:
-            st.metric("Job Match Score", f"{match_score['overall']}%")
-            st.progress(match_score["overall"] / 100)
-            if match_score["breakdown"]:
-                score_columns = st.columns(len(match_score["breakdown"]))
-                for column, (category, value) in zip(
-                    score_columns, match_score["breakdown"].items()
-                ):
-                    column.metric(category, f"{value}/100")
-
-    st.markdown('<div class="result-box">', unsafe_allow_html=True)
-    st.markdown(st.session_state.result)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # --------------------------------------------------------
-    # Download as PDF
-    # --------------------------------------------------------
-
-    safe_agent_name = (
-        st.session_state.result_agent.lower().replace(" ", "_")
-    )
-    file_name = f"careerops_{safe_agent_name}_report.pdf"
-
-    match_score_for_pdf = None
-    if st.session_state.result_agent == "Job Match Score":
-        match_score_for_pdf = parse_match_score(st.session_state.result)
-
+    agent_names = list(AGENTS.keys())
     try:
-        pdf_bytes = build_pdf(
-            agent=st.session_state.result_agent,
-            task=st.session_state.result_agent,
-            markdown_text=st.session_state.result,
-            generated_at=st.session_state.last_run_time or "",
-            career_request=st.session_state.career_request or "",
-            match_score=match_score_for_pdf,
+        a_index = agent_names.index(st.session_state.selected_agent)
+    except ValueError:
+        a_index = 0
+
+    selected_agent = st.selectbox(
+        "Agent",
+        options=agent_names,
+        index=a_index,
+        label_visibility="collapsed",
+        key="agent_select_box",
+    )
+    st.session_state.selected_agent = selected_agent
+    st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
+
+    st.markdown('<div class="co-section-label">Insight Archive</div>', unsafe_allow_html=True)
+    st.caption("Saved outputs from previous runs. Switching agents no longer loses them.")
+
+    if not st.session_state.insight_archive:
+        st.markdown(
+            '<p class="co-muted">No saved insights yet. Run an analysis to start building your archive.</p>',
+            unsafe_allow_html=True,
+        )
+    else:
+        for item in st.session_state.insight_archive[:12]:
+            label = f"{item['agent']} · {item['time']}"
+            if st.button(label, key=f"arch_{item['id']}", use_container_width=True):
+                st.session_state.active_insight_id = item["id"]
+                st.session_state.result = item["text"]
+                st.session_state.result_agent = item["agent"]
+                st.session_state.last_run_time = item["time"]
+                st.rerun()
+
+    st.markdown("---")
+    st.markdown('<div class="co-section-label">Context briefing</div>', unsafe_allow_html=True)
+    st.caption("Optional. Not required to run an agent. Open when you want extra instructions or to refer to past insights.")
+
+    briefing_open = st.toggle("Open briefing panel", value=st.session_state.briefing_open)
+    st.session_state.briefing_open = briefing_open
+
+    if briefing_open:
+        st.text_area(
+            "Extra instructions (optional)",
+            value=st.session_state.career_request,
+            key="career_request_box",
+            height=100,
+            placeholder="e.g. Focus on remote roles in Europe. Prefer concise bullet points.",
+        )
+        st.session_state.career_request = st.session_state.get(
+            "career_request_box", st.session_state.career_request
         )
 
-        st.download_button(
-            label="⬇️ Download PDF Report",
-            data=pdf_bytes,
-            file_name=file_name,
-            mime="application/pdf",
-            use_container_width=True,
-        )
-    except Exception as pdf_error:
-        st.warning(
-            "Could not build the PDF. Falling back to a text download."
-        )
-        with st.expander("PDF error details"):
-            st.code(str(pdf_error))
+        # Lightweight memory: show last 3 archive titles as context chips
+        if st.session_state.insight_archive:
+            st.caption("Recent insights available to reference:")
+            for item in st.session_state.insight_archive[:3]:
+                st.markdown(f"- **{item['agent']}** ({item['time']})")
 
-        st.download_button(
-            label="⬇️ Download Result (TXT)",
-            data=st.session_state.result,
-            file_name=file_name.replace(".pdf", ".txt"),
-            mime="text/plain",
+        user_note = st.chat_input("Note for this run (optional)")
+        if user_note:
+            st.session_state.chat_messages.append(
+                {"role": "user", "content": user_note}
+            )
+            # fold into career_request
+            st.session_state.career_request = (
+                (st.session_state.career_request + "\n" + user_note).strip()
+            )
+            st.rerun()
+
+        for msg in st.session_state.chat_messages[-6:]:
+            with st.chat_message(msg["role"]):
+                st.write(msg["content"])
+
+# ====================== CENTER: main work surface ======================
+with center:
+    st.markdown(
+        """
+        <div class="co-card-dark">
+            <div class="co-kicker" style="color:#94a3b8;">CareerOps AI</div>
+            <div style="font-size:1.45rem;font-weight:700;margin:0;">Career operations workspace</div>
+            <div style="color:#cbd5e1;font-size:0.9rem;margin-top:0.25rem;">
+                Select an analysis type on the right, add CV and job below, then run.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f'<span class="co-agent-pill">{selected_agent}</span>',
+        unsafe_allow_html=True,
+    )
+    st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
+
+    # ---- Inputs in compact tabs (less scroll) ----
+    tab_cv, tab_job, tab_run = st.tabs(["CV", "Job description", "Run"])
+
+    with tab_cv:
+        cv_upload = st.file_uploader(
+            "Upload CV",
+            type=["pdf", "docx", "txt"],
+            help="PDF, DOCX, or TXT",
+        )
+        if cv_upload is not None:
+            try:
+                ext = os.path.splitext(cv_upload.name)[1].lower()
+                if ext == ".txt":
+                    st.session_state.cv_text = cv_upload.read().decode(
+                        "utf-8", errors="ignore"
+                    )
+                else:
+                    with tempfile.NamedTemporaryFile(
+                        delete=False, suffix=ext
+                    ) as tmp:
+                        tmp.write(cv_upload.getbuffer())
+                        path = tmp.name
+                    try:
+                        extracted = extract_cv_text.run(path)
+                        if extracted:
+                            st.session_state.cv_text = extracted
+                    finally:
+                        try:
+                            os.remove(path)
+                        except Exception:
+                            pass
+                st.success(f"Loaded {cv_upload.name}")
+            except Exception as err:
+                st.error(f"Could not read CV: {err}")
+
+        st.session_state.cv_text = st.text_area(
+            "CV text",
+            value=st.session_state.cv_text,
+            height=220,
+            placeholder="Paste CV text…",
+            label_visibility="collapsed",
+        )
+
+    with tab_job:
+        st.session_state.job_description = st.text_area(
+            "Job description",
+            value=st.session_state.job_description,
+            height=280,
+            placeholder="Paste the full job description…",
+            label_visibility="collapsed",
+        )
+
+    with tab_run:
+        st.markdown(
+            f"**Ready to run:** `{selected_agent}`"
+        )
+        if st.session_state.career_request.strip():
+            st.caption("Optional briefing will be included.")
+        else:
+            st.caption("No extra briefing — agent will use its standard task.")
+
+        run_clicked = st.button(
+            f"Run {selected_agent}",
+            type="primary",
             use_container_width=True,
         )
+
+        if run_clicked:
+            if not MODEL_READY:
+                st.error("Selected model is not available. Fix the API key in the left panel.")
+            else:
+                errors = validate_inputs()
+                if errors:
+                    for e in errors:
+                        st.warning(e)
+                else:
+                    with st.spinner(f"Running {selected_agent}…"):
+                        try:
+                            result = run_selected_agent(
+                                agent_name=selected_agent,
+                                cv_text=st.session_state.cv_text,
+                                job_description=st.session_state.job_description,
+                                career_request=st.session_state.career_request,
+                            )
+                            result_text = extract_result_text(result)
+                            st.session_state.result = result_text
+                            st.session_state.result_agent = selected_agent
+                            st.session_state.last_run_time = datetime.now().strftime(
+                                "%Y-%m-%d %H:%M:%S"
+                            )
+                            archive_insight(
+                                selected_agent,
+                                result_text,
+                                st.session_state.career_request,
+                            )
+                            st.success("Analysis complete. Saved to Insight Archive.")
+                            st.rerun()
+                        except Exception as error:
+                            if is_daily_quota_error(error):
+                                show_quota_error(error)
+                            else:
+                                st.error("The agent could not complete this request.")
+                                with st.expander("Technical details"):
+                                    st.code(str(error))
+
+    # ---- Active result surface ----
+    active = get_active_insight()
+    display_text = st.session_state.result
+    display_agent = st.session_state.result_agent
+    display_time = st.session_state.last_run_time
+
+    if active and not display_text:
+        display_text = active["text"]
+        display_agent = active["agent"]
+        display_time = active["time"]
+
+    if display_text:
+        st.markdown("---")
+        st.markdown('<div class="co-section-label">Insight</div>', unsafe_allow_html=True)
+        st.markdown(f"**{display_agent}**")
+        if display_time:
+            st.caption(f"Generated {display_time}")
+
+        render_modular_result(display_agent, display_text)
+
+        # PDF download
+        safe = display_agent.lower().replace(" ", "_")
+        match_for_pdf = (
+            parse_match_score(display_text)
+            if display_agent == "Job Match Score"
+            else None
+        )
+        try:
+            pdf_bytes = build_pdf(
+                agent=display_agent,
+                task=display_agent,
+                markdown_text=display_text,
+                generated_at=display_time or "",
+                career_request=st.session_state.career_request or "",
+                match_score=match_for_pdf,
+            )
+            st.download_button(
+                "Download PDF",
+                data=pdf_bytes,
+                file_name=f"careerops_{safe}_report.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        except Exception as pdf_err:
+            st.download_button(
+                "Download text",
+                data=display_text,
+                file_name=f"careerops_{safe}_report.txt",
+                mime="text/plain",
+                use_container_width=True,
+            )
+            with st.expander("PDF unavailable"):
+                st.code(str(pdf_err))
