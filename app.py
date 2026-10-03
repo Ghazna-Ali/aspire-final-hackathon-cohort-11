@@ -20,6 +20,15 @@ from tasks import TASKS
 from tools import extract_cv_text
 from memory import CareerMemory
 
+# New features: Job Match Score, Skill Gap Detector,
+# Cover Letter Generation, Career Roadmap
+from features import (
+    FEATURE_AGENTS,
+    FEATURE_TASKS,
+    FEATURE_DESCRIPTIONS,
+    parse_match_score,
+)
+
 
 # ============================================================
 # PAGE CONFIGURATION
@@ -123,6 +132,15 @@ AGENT_DESCRIPTIONS = {
         "weaknesses, missing evidence, gaps, and improvements."
     ),
 }
+
+
+# ============================================================
+# NEW FEATURES (added to the existing registries)
+# ============================================================
+
+AGENTS.update(FEATURE_AGENTS)
+AGENT_DESCRIPTIONS.update(FEATURE_DESCRIPTIONS)
+TASKS.update(FEATURE_TASKS)
 
 
 # ============================================================
@@ -761,6 +779,37 @@ if st.session_state.result:
             f"Completed: "
             f"{st.session_state.last_run_time}"
         )
+
+    # --------------------------------------------------------
+    # Match score meter (only for the Job Match Score feature)
+    # --------------------------------------------------------
+
+    if st.session_state.result_agent == "Job Match Score":
+
+        match_score = parse_match_score(
+            st.session_state.result
+        )
+
+        if match_score:
+
+            st.metric(
+                "Job Match Score",
+                f"{match_score['overall']}%",
+            )
+
+            st.progress(match_score["overall"] / 100)
+
+            if match_score["breakdown"]:
+
+                score_columns = st.columns(
+                    len(match_score["breakdown"])
+                )
+
+                for column, (category, value) in zip(
+                    score_columns,
+                    match_score["breakdown"].items(),
+                ):
+                    column.metric(category, f"{value}/100")
 
     st.markdown(
         '<div class="result-box">',
