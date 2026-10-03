@@ -5,6 +5,26 @@ import tempfile
 import uuid
 from datetime import datetime
 
+# ============================================================
+# GROQ / CREWAI CACHE BREAKPOINT COMPATIBILITY FIX
+# ============================================================
+#
+# CrewAI can add `cache_breakpoint` to agent messages.
+# That field is intended for Anthropic prompt caching,
+# but Groq/LiteLLM rejects it.
+#
+# IMPORTANT:
+# This must run BEFORE importing CrewAI.
+# ============================================================
+try:
+    import crewai.llms.cache as _crewai_cache
+
+    _crewai_cache.mark_cache_breakpoint = lambda msg: msg
+
+except Exception:
+    pass
+
+
 import streamlit as st
 from crewai import Crew, Process
 
