@@ -1,3 +1,4 @@
+```python
 import os
 import re
 import time
@@ -56,7 +57,7 @@ st.set_page_config(
 
 
 # ============================================================
-# CSS — dark prominent header
+# CSS
 # ============================================================
 
 st.markdown(
@@ -301,6 +302,10 @@ for k, v in defaults.items():
         st.session_state[k] = v
 
 
+# ============================================================
+# RESET / STATE HELPERS
+# ============================================================
+
 def reset_everything():
     st.session_state.cv_text = ""
     st.session_state.job_description = ""
@@ -333,6 +338,7 @@ def archive_insight(agent_name, text, career_request=""):
     }
 
     st.session_state.insight_archive.insert(0, item)
+
     st.session_state.insight_archive = (
         st.session_state.insight_archive[:30]
     )
@@ -373,7 +379,10 @@ def is_daily_quota_error(error):
         "INSUFFICIENT_QUOTA",
     ]
 
-    return any(p in message for p in patterns)
+    return any(
+        pattern in message
+        for pattern in patterns
+    )
 
 
 def is_retryable_ai_error(error):
@@ -398,20 +407,29 @@ def is_retryable_ai_error(error):
         "GATEWAY TIMEOUT",
     ]
 
-    return any(p in message for p in patterns)
+    return any(
+        pattern in message
+        for pattern in patterns
+    )
 
 
 # ============================================================
 # CREW RETRY
 # ============================================================
 
-def kickoff_with_retry(crew, inputs, max_attempts=4):
+def kickoff_with_retry(
+    crew,
+    inputs,
+    max_attempts=4,
+):
     delays = [5, 15, 30]
 
     for attempt in range(max_attempts):
 
         try:
-            return crew.kickoff(inputs=inputs)
+            return crew.kickoff(
+                inputs=inputs
+            )
 
         except Exception as error:
 
@@ -424,7 +442,12 @@ def kickoff_with_retry(crew, inputs, max_attempts=4):
             if attempt == max_attempts - 1:
                 raise error
 
-            delay = delays[min(attempt, len(delays) - 1)]
+            delay = delays[
+                min(
+                    attempt,
+                    len(delays) - 1,
+                )
+            ]
 
             st.warning(
                 f"Temporary API issue "
@@ -470,11 +493,16 @@ def run_selected_agent(
     career_request,
 ):
 
-    crew = create_single_agent_crew(agent_name)
+    crew = create_single_agent_crew(
+        agent_name
+    )
 
     inputs = {
         "cv_text": cv_text or "(not provided)",
-        "job_description": job_description or "(not provided)",
+        "job_description": (
+            job_description
+            or "(not provided)"
+        ),
         "career_request": (
             career_request
             or "Produce the standard analysis for this agent."
@@ -489,10 +517,14 @@ def run_selected_agent(
             memory.set_cv(cv_text)
 
         if hasattr(memory, "set_job_description"):
-            memory.set_job_description(job_description)
+            memory.set_job_description(
+                job_description
+            )
 
         if hasattr(memory, "set_career_request"):
-            memory.set_career_request(career_request)
+            memory.set_career_request(
+                career_request
+            )
 
     except Exception:
         pass
@@ -512,7 +544,10 @@ def extract_result_text(result):
     if result is None:
         return ""
 
-    if hasattr(result, "raw") and result.raw is not None:
+    if (
+        hasattr(result, "raw")
+        and result.raw is not None
+    ):
         return str(result.raw)
 
     return str(result)
@@ -543,7 +578,10 @@ def validate_inputs():
 # RESULT RENDERING
 # ============================================================
 
-def render_modular_result(agent_name, text):
+def render_modular_result(
+    agent_name,
+    text,
+):
 
     if not text:
         st.info("No content.")
@@ -555,13 +593,15 @@ def render_modular_result(agent_name, text):
 
         if match:
 
-            c1, c2 = st.columns([1, 2])
+            c1, c2 = st.columns(
+                [1, 2]
+            )
 
             with c1:
 
                 st.metric(
                     "Match",
-                    f"{match['overall']}%"
+                    f"{match['overall']}%",
                 )
 
                 st.progress(
@@ -573,37 +613,39 @@ def render_modular_result(agent_name, text):
                 if match.get("breakdown"):
 
                     cols = st.columns(
-                        len(match["breakdown"])
+                        len(
+                            match["breakdown"]
+                        )
                     )
 
                     for col, (
-                        cat,
-                        val,
+                        category,
+                        value,
                     ) in zip(
                         cols,
                         match["breakdown"].items(),
                     ):
 
                         col.metric(
-                            cat.split()[0],
-                            f"{val}",
+                            category.split()[0],
+                            f"{value}",
                         )
 
     if agent_name == "Job Legitimacy Check":
 
-        m = re.search(
+        match = re.search(
             r"Legitimacy Score:\s*(\d{1,3})",
             text,
             re.I,
         )
 
-        if m:
+        if match:
 
             score = min(
                 100,
                 max(
                     0,
-                    int(m.group(1)),
+                    int(match.group(1)),
                 ),
             )
 
@@ -691,7 +733,9 @@ if (
             datetime.now() - started
         ).total_seconds() > 600:
 
-            st.session_state.run_status = "error"
+            st.session_state.run_status = (
+                "error"
+            )
 
             st.session_state.run_error = (
                 "Previous run did not finish "
@@ -748,11 +792,9 @@ left_panel = None
 if left_open:
 
     left_panel = cols[idx]
-
     idx += 1
 
 center = cols[idx]
-
 idx += 1
 
 right_panel = None
@@ -785,10 +827,14 @@ if left_panel is not None:
             unsafe_allow_html=True,
         )
 
-        h1, h2 = st.columns([5, 1])
+        h1, h2 = st.columns(
+            [5, 1]
+        )
 
         with h1:
-            st.markdown("### Settings")
+            st.markdown(
+                "### Settings"
+            )
 
         with h2:
 
@@ -840,7 +886,9 @@ if left_panel is not None:
         )
 
         if MODEL_READY:
-            st.success("Model ready")
+            st.success(
+                "Model ready"
+            )
         else:
             st.warning(
                 "Configure an API key"
@@ -905,10 +953,14 @@ if right_panel is not None:
             unsafe_allow_html=True,
         )
 
-        h1, h2 = st.columns([5, 1])
+        h1, h2 = st.columns(
+            [5, 1]
+        )
 
         with h1:
-            st.markdown("### Analysis")
+            st.markdown(
+                "### Analysis"
+            )
 
         with h2:
 
@@ -1179,27 +1231,34 @@ with center:
         unsafe_allow_html=True,
     )
 
+    # ========================================================
+    # HERO
+    # ========================================================
+
     st.markdown(
-        
-    <div class="co-hero">
+        """
+        <div class="co-hero">
 
-    <div class="co-kicker">
-    CareerOps AI
-    </div>
-    <div class="co-hero-title">
-    Career Assistant AI
-    </div>
+            <div class="co-kicker">
+                CareerOps AI
+            </div>
 
-    <p class="co-hero-sub">
-    Configure the model in
-    <strong>Settings</strong>.
-    Choose an agent and review past
-    results in <strong>Analysis</strong>.
-    </p>
-    </div>
-        ,
-    unsafe_allow_html=True,
+            <div class="co-hero-title">
+                Career Assistant AI
+            </div>
+
+            <p class="co-hero-sub">
+                Configure the model in
+                <strong>Settings</strong>.
+                Choose an agent and review past
+                results in <strong>Analysis</strong>.
+            </p>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
+
 
     # ========================================================
     # TOP CONTROLS
@@ -1277,9 +1336,11 @@ with center:
         )
 
     st.markdown(
-        f'<span class="co-agent-pill">'
-        f"{selected_agent}"
-        f"</span>",
+        f"""
+        <span class="co-agent-pill">
+            {selected_agent}
+        </span>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -1527,7 +1588,7 @@ with center:
                 st.session_state.run_error = (
                     "Selected model is not available. "
                     "Open Settings and configure "
-                    "a valid API key."
+                    "a valid Gemini API key."
                 )
 
                 st.rerun()
@@ -1538,8 +1599,10 @@ with center:
 
                 if errors:
 
-                    for e in errors:
-                        st.warning(e)
+                    for error_message in errors:
+                        st.warning(
+                            error_message
+                        )
 
                 else:
 
@@ -1559,8 +1622,8 @@ with center:
 
                         with st.spinner(
                             f"Running {selected_agent}… "
-                            "Quota and temporary API "
-                            "errors are handled automatically."
+                            "Temporary API errors are "
+                            "handled automatically."
                         ):
 
                             result = run_selected_agent(
@@ -1619,8 +1682,8 @@ with center:
                         ):
 
                             st.session_state.run_error = (
-                                "Provider quota / "
-                                "usage limit reached.\n\n"
+                                "Gemini quota / usage "
+                                "limit reached.\n\n"
                                 + str(error)
                             )
 
@@ -1747,7 +1810,7 @@ with center:
                 use_container_width=True,
             )
 
-        except Exception as pdf_err:
+        except Exception as pdf_error:
 
             st.download_button(
                 "Download text",
@@ -1764,10 +1827,11 @@ with center:
             ):
 
                 st.code(
-                    str(pdf_err)
+                    str(pdf_error)
                 )
 
     st.markdown(
         "</div>",
         unsafe_allow_html=True,
     )
+```
