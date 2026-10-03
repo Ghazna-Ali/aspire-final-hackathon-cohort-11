@@ -35,13 +35,13 @@ from model_manager import (
 )
 
 # ============================================================
-# PAGE — native sidebar open/close (like CareerOp-AI)
+# PAGE
 # ============================================================
 st.set_page_config(
     page_title="CareerOps AI",
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ============================================================
@@ -55,13 +55,25 @@ st.markdown(
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
     .block-container {
-        padding-top: 0.85rem;
+        padding-top: 0.75rem;
         padding-bottom: 1.5rem;
         max-width: 1400px;
     }
-    section[data-testid="stSidebar"] {
-        min-width: 260px;
+
+    .co-scroll {
+        max-height: calc(100vh - 5rem);
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding-right: 0.3rem;
+        scrollbar-width: thin;
+        scrollbar-color: #94a3b8 transparent;
     }
+    .co-scroll::-webkit-scrollbar { width: 6px; }
+    .co-scroll::-webkit-scrollbar-thumb {
+        background: #94a3b8;
+        border-radius: 999px;
+    }
+
     .co-card-dark {
         background: #0f172a;
         color: #f8fafc;
@@ -101,9 +113,15 @@ st.markdown(
         color: #334155;
         margin-bottom: 0.2rem;
     }
-    div.stButton > button {
-        border-radius: 8px;
+
+    /* Compact toolbar buttons */
+    div[data-testid="column"] div.stButton > button {
+        border-radius: 6px;
         font-weight: 600;
+        font-size: 0.8rem;
+        padding-top: 0.25rem;
+        padding-bottom: 0.25rem;
+        min-height: 2rem;
         border: 1px solid #cbd5e1;
         background: #ffffff;
         color: #0f172a;
@@ -160,8 +178,10 @@ defaults = {
     "active_insight_id": None,
     "briefing_open": False,
     "chat_messages": [],
+    "left_open": True,
     "right_open": True,
-    "run_status": "idle",  # idle | running | success | error
+    # run lifecycle (never leave "running" stuck without escape)
+    "run_status": "idle",       # idle | running | success | error
     "run_error": "",
     "run_started_at": None,
 }
@@ -187,6 +207,7 @@ def reset_everything():
 
 
 def clear_run_state():
+    """Unstick UI after hang / disconnect / failed run."""
     st.session_state.run_status = "idle"
     st.session_state.run_error = ""
     st.session_state.run_started_at = None
@@ -357,7 +378,7 @@ def render_modular_result(agent_name, text):
             st.markdown(text)
 
 
-# Auto-clear stuck "running" after 10 minutes
+# Auto-clear a stuck "running" flag older than 10 minutes
 if st.session_state.run_status == "running" and st.session_state.run_started_at:
     try:
         started = datetime.strptime(
@@ -373,32 +394,74 @@ if st.session_state.run_status == "running" and st.session_state.run_started_at:
     except Exception:
         clear_run_state()
 
+# ============================================================
+# LAYOUT: only left panel | center | right panel (NO rails)
+# ============================================================
+left_open = st.session_state.left_open
+right_open = st.session_state.right_open
+
+widths = []
+if left_open:
+    widths.append(1.2)
+widths.append(2.6)
+if right_open:
+    widths.append(1.2)
+
+cols = st.columns(widths, gap="medium")
+
+idx = 0
+left_panel = None
+if left_open:
+    left_panel = cols[idx]
+    idx += 1
+center = cols[idx]
+idx += 1
+right_panel = None
+if right_open:
+    right_panel = cols[idx]
+
+MODEL_READY = False
+selected_agent = st.session_state.selected_agent
 run_busy = st.session_state.run_status == "running"
 
 # ============================================================
-# LEFT: native Streamlit sidebar (chevron open/close built-in)
+# LEFT PANEL
 # ============================================================
-with st.sidebar:
-    st.markdown("### Workspace")
-    st.caption("Use the sidebar arrow (top) to open or close this panel.")
+if left_panel is not None:
+    with left_panel:
+        st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
 
-    MODEL_READY = render_model_selector(AGENTS, container=st.sidebar)
+        h1, h2 = st.columns([5, 1])
+        with h1:
+            st.markdown(
+                '<div class="co-section-label">Workspace</div>',
+                unsafe_allow_html=True,
+            )
+        with h2:
+            if st.button("×", key="close_left", help="Hide workspace"):
+                st.session_state.left_open = False
+                st.rerun()
 
-    st.markdown("---")
-    st.markdown("### Status")
-    if MODEL_READY:
-        st.success("Model ready")
-    else:
-        st.warning("Configure an API key")
-    st.caption("One agent per run. Outputs stay in Insight Archive.")
+        MODEL_READY = render_model_selector(AGENTS, container=left_panel)
 
-    st.markdown("---")
-    if st.button("Reset workspace", use_container_width=True, key="reset_ws"):
-        reset_everything()
-        st.rerun()
+        st.markdown(
+            '<div class="co-section-label">Status</div>',
+            unsafe_allow_html=True,
+        )
+        if MODEL_READY:
+            st.success("Model ready")
+        else:
+            st.warning("Configure an API key")
 
-# If sidebar widgets did not set MODEL_READY somehow, fall back
-if not MODEL_READY:
+        st.caption("One agent per run. Results go to Insight Archive.")
+
+        st.markdown("---")
+        if st.button("Reset workspace", use_container_width=True, key="reset_ws"):
+            reset_everything()
+            st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+else:
     key = st.session_state.get("selected_model_key", default_model_key())
     MODEL_READY = is_model_available(key)
     if MODEL_READY:
@@ -408,44 +471,22 @@ if not MODEL_READY:
             MODEL_READY = False
 
 # ============================================================
-# MAIN AREA: toolbar + center (+ optional right panel)
-# ============================================================
-tb1, tb2, tb3 = st.columns([1.3, 1.3, 4])
-with tb1:
-    right_label = (
-        "Hide analysis" if st.session_state.right_open else "Show analysis"
-    )
-    if st.button(right_label, key="tog_right", use_container_width=True):
-        st.session_state.right_open = not st.session_state.right_open
-        st.rerun()
-with tb2:
-    if st.session_state.run_status in ("running", "error"):
-        if st.button("Clear status", key="clear_run", use_container_width=True):
-            clear_run_state()
-            st.rerun()
-with tb3:
-    st.caption(
-        f"Agent: **{st.session_state.selected_agent}**"
-        + (" · run active" if run_busy else "")
-    )
-
-if st.session_state.right_open:
-    center, right_panel = st.columns([2.6, 1.15], gap="medium")
-else:
-    center = st.container()
-    right_panel = None
-
-selected_agent = st.session_state.selected_agent
-
-# ============================================================
-# RIGHT PANEL (analysis type, archive, briefing)
+# RIGHT PANEL
 # ============================================================
 if right_panel is not None:
     with right_panel:
-        st.markdown(
-            '<div class="co-section-label">Analysis</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
+
+        h1, h2 = st.columns([5, 1])
+        with h1:
+            st.markdown(
+                '<div class="co-section-label">Analysis</div>',
+                unsafe_allow_html=True,
+            )
+        with h2:
+            if st.button("×", key="close_right", help="Hide analysis panel"):
+                st.session_state.right_open = False
+                st.rerun()
 
         st.markdown(
             '<div class="co-field-label">Analysis type</div>',
@@ -464,7 +505,7 @@ if right_panel is not None:
             label_visibility="collapsed",
             key="agent_select_box",
             disabled=run_busy,
-            help="Choose before running.",
+            help="Choose before running. Disabled only while a run is active.",
         )
         if not run_busy:
             st.session_state.selected_agent = selected_agent
@@ -535,9 +576,7 @@ if right_panel is not None:
                     unsafe_allow_html=True,
                 )
                 for item in st.session_state.insight_archive[:3]:
-                    st.markdown(
-                        f"- **{item['agent']}** ({item['time']})"
-                    )
+                    st.markdown(f"- **{item['agent']}** ({item['time']})")
 
             user_note = st.chat_input("Add a short note for this run")
             if user_note:
@@ -553,10 +592,39 @@ if right_panel is not None:
                 with st.chat_message(msg["role"]):
                     st.write(msg["content"])
 
+        st.markdown("</div>", unsafe_allow_html=True)
+else:
+    selected_agent = st.session_state.selected_agent
+
 # ============================================================
 # CENTER
 # ============================================================
 with center:
+    st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
+
+    # Compact toolbar (replaces rails)
+    t1, t2, t3, t4 = st.columns([1.2, 1.2, 3, 1.4])
+    with t1:
+        label_l = "Hide model" if left_open else "Show model"
+        if st.button(label_l, key="tog_left", use_container_width=True):
+            st.session_state.left_open = not st.session_state.left_open
+            st.rerun()
+    with t2:
+        label_r = "Hide analysis" if right_open else "Show analysis"
+        if st.button(label_r, key="tog_right", use_container_width=True):
+            st.session_state.right_open = not st.session_state.right_open
+            st.rerun()
+    with t3:
+        st.caption(
+            f"Agent: **{selected_agent}**"
+            + (" · run active" if run_busy else "")
+        )
+    with t4:
+        if st.session_state.run_status in ("running", "error"):
+            if st.button("Clear status", key="clear_run", use_container_width=True):
+                clear_run_state()
+                st.rerun()
+
     st.markdown(
         """
         <div class="co-card-dark">
@@ -565,8 +633,7 @@ with center:
                 Career operations workspace
             </div>
             <div style="color:#cbd5e1;font-size:0.86rem;margin-top:0.15rem;">
-                Left sidebar: model and status (native open/close).
-                Right: analysis type and archive (Show / Hide analysis).
+                Toggle panels above. Add CV and job, then use the Run tab.
             </div>
         </div>
         """,
@@ -579,6 +646,7 @@ with center:
     )
     st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
 
+    # ---------- Run status (replaces stuck lock banner) ----------
     if st.session_state.run_status == "running":
         st.info(
             f"Running **{st.session_state.selected_agent}**… "
@@ -591,7 +659,7 @@ with center:
         if st.session_state.run_error:
             with st.expander("Error details", expanded=True):
                 st.code(st.session_state.run_error)
-        st.caption("Fix the issue, then run again.")
+        st.caption("Fix the issue, then run again. Error handling is active.")
     elif st.session_state.run_status == "success":
         st.success("Last run completed. Output is below and in Insight Archive.")
 
@@ -679,7 +747,7 @@ with center:
                 st.session_state.run_status = "error"
                 st.session_state.run_error = (
                     "Selected model is not available. "
-                    "Open the left sidebar and configure a valid API key."
+                    "Open Show model and configure a valid API key."
                 )
                 st.rerun()
             else:
@@ -728,6 +796,7 @@ with center:
                             st.session_state.run_error = str(error)
                     finally:
                         st.session_state.run_started_at = None
+                        # leave status as success or error; never leave "running"
                         if st.session_state.run_status == "running":
                             st.session_state.run_status = "error"
                             st.session_state.run_error = (
@@ -735,6 +804,7 @@ with center:
                             )
                         st.rerun()
 
+    # Insight display
     active = get_active_insight()
     display_text = st.session_state.result
     display_agent = st.session_state.result_agent
@@ -789,3 +859,5 @@ with center:
             )
             with st.expander("PDF unavailable"):
                 st.code(str(pdf_err))
+
+    st.markdown("</div>", unsafe_allow_html=True)
