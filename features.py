@@ -12,6 +12,7 @@ below into its own AGENTS / TASKS / AGENT_DESCRIPTIONS dictionaries.
     Cover Letter Generation   Application Agent
     Career Roadmap            Manager Agent
 """
+from agents import research_agent  # already imported if present; keep single import at top
 
 import re
 
@@ -380,3 +381,150 @@ def parse_match_score(text):
         return {"overall": _clamp(match.group(1)), "breakdown": breakdown}
 
     return None
+
+# ============================================================
+# MARKET CHECK FEATURES (Research / Manager agents)
+# ============================================================
+
+
+job_legitimacy_task = Task(
+    description="""
+Assess whether this job posting looks legitimate or risky.
+
+CANDIDATE CV:
+{cv_text}
+
+JOB DESCRIPTION:
+{job_description}
+
+CAREER REQUEST (optional context):
+{career_request}
+
+Evaluate red flags and green flags for scam or low-quality postings:
+- Vague salary, urgency pressure, unpaid "training", crypto/payment requests
+- Grammar quality, company contactability, role clarity
+- Requirements that don't match the title
+- Remote/work-from-home scam patterns
+
+Write Markdown with EXACTLY this structure:
+
+## Legitimacy Score: <0-100>
+**Verdict:** one sentence (Likely legitimate / Mixed / High risk)
+
+## Green Flags
+- bullet list
+
+## Red Flags
+- bullet list
+
+## What To Verify Before Applying
+- 3 to 5 concrete checks (company domain, LinkedIn, official careers page)
+
+## Recommendation
+One short paragraph: apply / apply with caution / avoid.
+
+Do not invent company facts. If unknown, write: Not verifiable from the provided text.
+""",
+    expected_output="Markdown legitimacy report with score, flags, checks, recommendation.",
+    agent=research_agent,
+)
+
+company_check_task = Task(
+    description="""
+Analyze the employer using only the job description and any company names in the request.
+
+CANDIDATE CV:
+{cv_text}
+
+JOB DESCRIPTION:
+{job_description}
+
+CAREER REQUEST:
+{career_request}
+
+Structure:
+
+## Company Snapshot
+What can be inferred (industry, size signals, location, product). Mark unknowns clearly.
+
+## Reputation Signals
+Positive and negative signals from the text only (not invented news).
+
+## Role Fit For This Company
+How the role typically sits in such an organization.
+
+## Questions To Ask Recruiters
+5 sharp questions.
+
+## Risk Notes
+Anything unclear or inconsistent.
+
+Never invent funding, ratings, or scandals. Say when evidence is missing.
+""",
+    expected_output="Markdown company analysis from provided text only.",
+    agent=research_agent,
+)
+
+similar_roles_task = Task(
+    description="""
+Suggest similar job directions based on this CV and target job.
+
+CANDIDATE CV:
+{cv_text}
+
+JOB DESCRIPTION:
+{job_description}
+
+CAREER REQUEST:
+{career_request}
+
+Structure:
+
+## Target Role Summary
+One short paragraph.
+
+## Similar Role Titles
+Table: Role title | Why similar | Typical seniority
+
+List 6 to 10 realistic alternative titles (not fantasy jobs).
+
+## Adjacent Career Paths
+3 paths with a one-line reason each.
+
+## Skills That Transfer
+Bullet list.
+
+## Where To Search
+Job boards / query keywords (no fake URLs required).
+
+Stay realistic and tied to the CV and job text.
+""",
+    expected_output="Markdown list of similar roles and transferable paths.",
+    agent=manager_agent,
+)
+
+# Merge into existing registries (add these lines next to FEATURE_* updates)
+FEATURE_AGENTS.update({
+    "Job Legitimacy Check": research_agent,
+    "Company Check": research_agent,
+    "Similar Roles": manager_agent,
+})
+FEATURE_TASKS.update({
+    "Job Legitimacy Check": job_legitimacy_task,
+    "Company Check": company_check_task,
+    "Similar Roles": similar_roles_task,
+})
+FEATURE_DESCRIPTIONS.update({
+    "Job Legitimacy Check": (
+        "(Research) Score how legitimate the posting looks and list red/green flags."
+    ),
+    "Company Check": (
+        "(Research) Company snapshot and questions from the job text only."
+    ),
+    "Similar Roles": (
+        "(Manager) Alternative titles and adjacent paths from your CV and target job."
+    ),
+})
+
+
+
