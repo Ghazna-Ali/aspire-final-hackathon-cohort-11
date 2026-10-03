@@ -1,50 +1,63 @@
 import streamlit as st
 from model_manager import (
     MODEL_CATALOG,
-    build_llm,
     configure_agents,
+    default_model_key,
+    get_key_status_message,
     is_model_available,
     model_label,
     selected_model_info,
+    validate_api_key,
 )
+
 
 def render_model_selector(agents):
     st.sidebar.subheader("🤖 AI Model")
 
     keys = list(MODEL_CATALOG.keys())
 
-    # Keep the last selection if it is still present.
-    current = st.session_state.get("selected_model_key", keys[0])
+    # Default: prefer a model whose key is valid
+    preferred = default_model_key()
+    current = st.session_state.get("selected_model_key", preferred)
     if current not in keys:
-        current = keys[0]
+        current = preferred
 
-    def label(key):
-        return model_label(key)
+    # Keep index in range
+    try:
+        index = keys.index(current)
+    except ValueError:
+        index = keys.index(preferred) if preferred in keys else 0
 
     selected = st.sidebar.selectbox(
         "Choose model",
         options=keys,
-        index=keys.index(current),
-        format_func=label,
+        index=index,
+        format_func=model_label,
         key="model_selector",
         help=(
-            "Models with a missing API key are shown with a gray/white "
-            "indicator and cannot be used until their key is configured."
+            "Green = key present and length/format look OK. "
+            "Grey = missing or invalid key. "
+            "Only free-tier models are listed."
         ),
     )
 
     st.session_state.selected_model_key = selected
     spec = selected_model_info(selected)
 
-    if not is_model_available(selected):
-        st.sidebar.warning(
-            f"🔒 {spec.secret_key} is missing. "
-            f"Add a real key in Streamlit Secrets to enable {spec.display_name}."
+    # Detailed key check for the selected model
+    ok, message = validate_api_key(spec.secret_key)
+
+    if not ok:
+        st.sidebar.error(f"🔒 {message}")
+        st.sidebar.caption(
+            f"Fix: add a valid `{spec.secret_key}` in Streamlit Secrets, then reload."
         )
         return False
 
-    st.sidebar.success(f"API key ready: {spec.secret_key}")
-    st.sidebar.caption(f"Provider: {spec.display_name.split()[0]} • {spec.tier}")
+    st.sidebar.success(f"✅ {message}")
+    st.sidebar.caption(
+        f"Provider: {spec.provider} • {spec.tier}"
+    )
 
     try:
         configure_agents(agents, selected)
