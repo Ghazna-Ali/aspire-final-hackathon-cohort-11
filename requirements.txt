@@ -1,7 +1,8 @@
 streamlit
-crewai[google-genai]
+crewai[google-genai,litellm]
 crewai-tools
 pypdf
 requests
 beautifulsoup4
 reportlab
+litellm
