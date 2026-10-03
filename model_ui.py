@@ -10,12 +10,7 @@ from model_manager import (
 
 
 def render_model_selector(agents, container=None):
-    """
-    Render model picker into `container` (column) or sidebar if None.
-    Returns True when the selected model is ready to run.
-    """
     ui = container if container is not None else st.sidebar
-
     ui.markdown("##### Model")
 
     keys = list(MODEL_CATALOG.keys())
@@ -38,7 +33,6 @@ def render_model_selector(agents, container=None):
         label_visibility="collapsed",
         help="Green = key OK. Grey = missing or invalid key.",
     )
-
     st.session_state.selected_model_key = selected
     spec = selected_model_info(selected)
     ok, message = validate_api_key(spec.secret_key)
