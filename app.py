@@ -1229,22 +1229,26 @@ with center:
     st.markdown(
         """
         <div class="co-hero">
+        """,
+        unsafe_allow_html=True,
+    )
 
-            <div class="co-kicker">
-                CareerOps AI
-            </div>
+    st.markdown(
+        "CareerOps AI",
+        help="CareerOps AI",
+    )
 
-            <div class="co-hero-title">
-                Career Assistant AI
-            </div>
+    st.markdown(
+        "## Career Assistant AI"
+    )
 
-            <p class="co-hero-sub">
-                Configure the model in
-                <strong>Settings</strong>.
-                Choose an agent and review past
-                results in <strong>Analysis</strong>.
-            </p>
+    st.markdown(
+        "Configure the model in **Settings**. "
+        "Choose an agent and review past results in **Analysis**."
+    )
 
+    st.markdown(
+        """
         </div>
         """,
         unsafe_allow_html=True,
