@@ -1,4 +1,4 @@
-```python
+
 import os
 import re
 import time
@@ -1834,4 +1834,4 @@ with center:
         "</div>",
         unsafe_allow_html=True,
     )
-```
+
