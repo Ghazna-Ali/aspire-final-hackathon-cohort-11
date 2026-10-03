@@ -1181,26 +1181,24 @@ with center:
 
     st.markdown(
         
-        <div class="co-hero">
+    <div class="co-hero">
 
-        <div class="co-kicker">
-        CareerOps AI
-        </div>
+    <div class="co-kicker">
+    CareerOps AI
+    </div>
+    <div class="co-hero-title">
+    Career Assistant AI
+    </div>
 
-        <div class="co-hero-title">
-        Career Assistant AI
-        </div>
-
-        <p class="co-hero-sub">
-        Configure the model in
-        <strong>Settings</strong>.
-        Choose an agent and review past
-        results in <strong>Analysis</strong>.
-        </p>
-
-        </div>
+    <p class="co-hero-sub">
+    Configure the model in
+    <strong>Settings</strong>.
+    Choose an agent and review past
+    results in <strong>Analysis</strong>.
+    </p>
+    </div>
         ,
-        unsafe_allow_html=True,
+    unsafe_allow_html=True,
     )
 
     # ========================================================
