@@ -1,90 +1,14 @@
-import os
 import streamlit as st
-from crewai import Agent, LLM
+from crewai import Agent
 
-
-# ============================================================
-# GEMINI API KEY
-# ============================================================
-
-def get_gemini_api_key():
-    """
-    Get the Gemini API key.
-
-    Priority:
-    1. Streamlit Secrets
-    2. Environment variable
-    """
-
-    # Streamlit Cloud / .streamlit/secrets.toml
-    try:
-        key = st.secrets.get("GEMINI_API_KEY")
-
-        if key:
-            return str(key).strip()
-    except Exception:
-        pass
-
-    # Environment variable
-    key = os.getenv("GEMINI_API_KEY")
-
-    if key:
-        return key.strip()
-
-    return None
-
-
-GEMINI_API_KEY = get_gemini_api_key()
-
-
-if not GEMINI_API_KEY:
-    raise ValueError(
-        "GEMINI_API_KEY is not configured.\n\n"
-        "For Streamlit Cloud, add GEMINI_API_KEY "
-        "under App Settings → Secrets."
-    )
-
-
-# ============================================================
-# GEMINI MODEL
-# ============================================================
-
-try:
-    secret_model = st.secrets.get("GEMINI_MODEL")
-except Exception:
-    secret_model = None
-
-
-GEMINI_MODEL = (
-    os.getenv("GEMINI_MODEL")
-    or secret_model
-    or "gemini-3.8-flash"
-)
-
-
-# ============================================================
-# GEMINI LLM
-# ============================================================
-
-gemini_llm = LLM(
-    model=f"gemini/{GEMINI_MODEL}",
-    api_key=GEMINI_API_KEY,
-)
-
-
-# ============================================================
-# COMMON SETTINGS
-# ============================================================
+# LLM selection is intentionally NOT initialized here.
+# app.py selects the provider/model and assigns the LLM at runtime.
+# This keeps every agent provider-independent.
 
 COMMON_AGENT_SETTINGS = {
-    "llm": gemini_llm,
+    "llm": None,
     "verbose": True,
 }
-
-
-# ============================================================
-# 1. MANAGER AGENT
-# ============================================================
 
 manager_agent = Agent(
     role="Career Operations Manager",
@@ -102,11 +26,6 @@ manager_agent = Agent(
     **COMMON_AGENT_SETTINGS,
     allow_delegation=False,
 )
-
-
-# ============================================================
-# 2. JOB ANALYST AGENT
-# ============================================================
 
 job_analyst_agent = Agent(
     role="Job Description Analyst",
@@ -129,11 +48,6 @@ job_analyst_agent = Agent(
     allow_delegation=False,
 )
 
-
-# ============================================================
-# 3. CV ANALYST AGENT
-# ============================================================
-
 cv_agent = Agent(
     role="CV and Candidate Matching Specialist",
     goal=(
@@ -154,11 +68,6 @@ cv_agent = Agent(
     allow_delegation=False,
 )
 
-
-# ============================================================
-# 4. RESEARCH AGENT
-# ============================================================
-
 research_agent = Agent(
     role="Company and Opportunity Research Specialist",
     goal=(
@@ -176,11 +85,6 @@ research_agent = Agent(
     **COMMON_AGENT_SETTINGS,
     allow_delegation=False,
 )
-
-
-# ============================================================
-# 5. APPLICATION AGENT
-# ============================================================
 
 application_agent = Agent(
     role="Professional Application Specialist",
@@ -201,11 +105,6 @@ application_agent = Agent(
     allow_delegation=False,
 )
 
-
-# ============================================================
-# 6. INTERVIEW AGENT
-# ============================================================
-
 interview_agent = Agent(
     role="Interview Preparation Coach",
     goal=(
@@ -225,11 +124,6 @@ interview_agent = Agent(
     allow_delegation=False,
 )
 
-
-# ============================================================
-# 7. CRITIC AGENT
-# ============================================================
-
 critic_agent = Agent(
     role="Career Application Quality Reviewer",
     goal=(
@@ -245,13 +139,17 @@ critic_agent = Agent(
     ),
     **COMMON_AGENT_SETTINGS,
     allow_delegation=False,
-    )
-
-
-# ============================================================
-# CONFIGURATION MESSAGE
-# ============================================================
-
-print(
-    f"CareerOps AI Gemini model configured: {GEMINI_MODEL}"
 )
+
+# Compatibility helper for older code that may expect this name.
+def set_all_agents_llm(llm):
+    for _agent in (
+        manager_agent,
+        job_analyst_agent,
+        cv_agent,
+        research_agent,
+        application_agent,
+        interview_agent,
+        critic_agent,
+    ):
+        _agent.llm = llm
