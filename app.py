@@ -28,6 +28,11 @@ from features import (
     FEATURE_DESCRIPTIONS,
     parse_match_score,
 )
+from model_manager import (
+    is_model_available,
+    default_model_key,
+    configure_agents,
+)
 
 # ============================================================
 # PAGE
@@ -40,7 +45,7 @@ st.set_page_config(
 )
 
 # ============================================================
-# CSS — panels, rails, scroll regions
+# CSS
 # ============================================================
 st.markdown(
     """
@@ -55,7 +60,6 @@ st.markdown(
         max-width: 1600px;
     }
 
-    /* Panel scroll areas (approximate independent scroll) */
     .co-scroll {
         max-height: calc(100vh - 5.5rem);
         overflow-y: auto;
@@ -75,7 +79,7 @@ st.markdown(
         border-radius: 10px;
         padding: 0.55rem 0.35rem;
         text-align: center;
-        min-height: 280px;
+        min-height: 200px;
     }
     .co-rail-label {
         font-size: 0.65rem;
@@ -83,6 +87,7 @@ st.markdown(
         letter-spacing: 0.04em;
         margin-top: 0.15rem;
         line-height: 1.2;
+        margin-bottom: 0.45rem;
     }
 
     .co-card-dark {
@@ -196,13 +201,6 @@ defaults = {
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
-
-
-def reset_result():
-    st.session_state.result = ""
-    st.session_state.result_agent = ""
-    st.session_state.last_run_time = None
-    st.session_state.active_insight_id = None
 
 
 def reset_everything():
@@ -388,13 +386,11 @@ def render_modular_result(agent_name, text):
 
 
 # ============================================================
-# COLUMN WIDTHS based on open/closed panels
+# LAYOUT WIDTHS
 # ============================================================
-# Layout slots: [left_rail | left_panel? | center | right_panel? | right_rail]
 left_open = st.session_state.left_open
 right_open = st.session_state.right_open
 
-# Narrow rails always present (~0.28); panels ~1.1 when open
 widths = [0.32]
 if left_open:
     widths.append(1.15)
@@ -405,7 +401,6 @@ widths.append(0.32)
 
 cols = st.columns(widths, gap="small")
 
-# Map indices
 idx = 0
 left_rail = cols[idx]
 idx += 1
@@ -425,28 +420,50 @@ MODEL_READY = False
 selected_agent = st.session_state.selected_agent
 
 # ============================================================
-# LEFT RAIL (always visible)
+# LEFT RAIL — icons only when panel is CLOSED
 # ============================================================
 with left_rail:
     st.markdown('<div class="co-rail">', unsafe_allow_html=True)
 
-    tip_left = "Collapse workspace" if left_open else "Open workspace (model & status)"
-    if st.button("☰", key="toggle_left", help=tip_left, use_container_width=True):
-        st.session_state.left_open = not st.session_state.left_open
-        st.rerun()
-    st.markdown(
-        '<div class="co-rail-label">Workspace</div>',
-        unsafe_allow_html=True,
-    )
+    if left_open:
+        if st.button(
+            "⟨",
+            key="toggle_left",
+            help="Collapse workspace",
+            use_container_width=True,
+        ):
+            st.session_state.left_open = False
+            st.rerun()
+        st.markdown(
+            '<div class="co-rail-label">Close</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        if st.button(
+            "☰",
+            key="toggle_left",
+            help="Open workspace (model and status)",
+            use_container_width=True,
+        ):
+            st.session_state.left_open = True
+            st.rerun()
+        st.markdown(
+            '<div class="co-rail-label">Workspace</div>',
+            unsafe_allow_html=True,
+        )
 
-    # Model icon — opens left if closed
-    if st.button("◈", key="rail_model", help="Model settings", use_container_width=True):
-        st.session_state.left_open = True
-        st.rerun()
-    st.markdown(
-        '<div class="co-rail-label">Model</div>',
-        unsafe_allow_html=True,
-    )
+        if st.button(
+            "◈",
+            key="rail_model",
+            help="Model settings",
+            use_container_width=True,
+        ):
+            st.session_state.left_open = True
+            st.rerun()
+        st.markdown(
+            '<div class="co-rail-label">Model</div>',
+            unsafe_allow_html=True,
+        )
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -457,16 +474,10 @@ if left_panel is not None:
     with left_panel:
         st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
 
-        top_l1, top_l2 = st.columns([4, 1])
-        with top_l1:
-            st.markdown(
-                '<div class="co-section-label">Workspace</div>',
-                unsafe_allow_html=True,
-            )
-        with top_l2:
-            if st.button("⟨", key="close_left", help="Collapse left panel"):
-                st.session_state.left_open = False
-                st.rerun()
+        st.markdown(
+            '<div class="co-section-label">Workspace</div>',
+            unsafe_allow_html=True,
+        )
 
         MODEL_READY = render_model_selector(AGENTS, container=left_panel)
 
@@ -478,69 +489,104 @@ if left_panel is not None:
             st.success("Model ready")
         else:
             st.warning("Configure an API key")
-        st.caption("One agent runs per action. Outputs stay in Insight Archive.")
+        st.caption(
+            "One agent runs per action. Outputs stay in Insight Archive."
+        )
 
         st.markdown("---")
-        if st.button("Reset workspace", use_container_width=True, key="reset_ws"):
+        if st.button(
+            "Reset workspace",
+            use_container_width=True,
+            key="reset_ws",
+        ):
             reset_everything()
             st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
 else:
-    # Still need MODEL_READY when left is closed — compute without UI
-    from model_manager import is_model_available, default_model_key
-
     key = st.session_state.get("selected_model_key", default_model_key())
     MODEL_READY = is_model_available(key)
-    # Re-apply LLM if possible so runs still work with panel closed
     if MODEL_READY:
         try:
-            from model_manager import configure_agents
-
             configure_agents(AGENTS, key)
         except Exception:
             MODEL_READY = False
 
 # ============================================================
-# RIGHT RAIL (always visible)
+# RIGHT RAIL — icons only when panel is CLOSED
 # ============================================================
 with right_rail:
     st.markdown('<div class="co-rail">', unsafe_allow_html=True)
 
-    tip_right = "Collapse analysis panel" if right_open else "Open analysis panel"
-    if st.button("☰", key="toggle_right", help=tip_right, use_container_width=True):
-        st.session_state.right_open = not st.session_state.right_open
-        st.rerun()
-    st.markdown(
-        '<div class="co-rail-label">Panel</div>',
-        unsafe_allow_html=True,
-    )
+    if right_open:
+        if st.button(
+            "⟩",
+            key="toggle_right",
+            help="Collapse analysis panel",
+            use_container_width=True,
+        ):
+            st.session_state.right_open = False
+            st.rerun()
+        st.markdown(
+            '<div class="co-rail-label">Close</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        if st.button(
+            "☰",
+            key="toggle_right",
+            help="Open analysis panel",
+            use_container_width=True,
+        ):
+            st.session_state.right_open = True
+            st.rerun()
+        st.markdown(
+            '<div class="co-rail-label">Panel</div>',
+            unsafe_allow_html=True,
+        )
 
-    agent_hover = f"Analysis type — currently: {st.session_state.selected_agent}"
-    if st.button("◉", key="rail_agent", help=agent_hover, use_container_width=True):
-        st.session_state.right_open = True
-        st.rerun()
-    st.markdown(
-        '<div class="co-rail-label">Agent</div>',
-        unsafe_allow_html=True,
-    )
+        agent_hover = (
+            f"Analysis type — currently: {st.session_state.selected_agent}"
+        )
+        if st.button(
+            "◉",
+            key="rail_agent",
+            help=agent_hover,
+            use_container_width=True,
+        ):
+            st.session_state.right_open = True
+            st.rerun()
+        st.markdown(
+            '<div class="co-rail-label">Agent</div>',
+            unsafe_allow_html=True,
+        )
 
-    if st.button("▦", key="rail_archive", help="Insight Archive", use_container_width=True):
-        st.session_state.right_open = True
-        st.rerun()
-    st.markdown(
-        '<div class="co-rail-label">Archive</div>',
-        unsafe_allow_html=True,
-    )
+        if st.button(
+            "▦",
+            key="rail_archive",
+            help="Insight Archive",
+            use_container_width=True,
+        ):
+            st.session_state.right_open = True
+            st.rerun()
+        st.markdown(
+            '<div class="co-rail-label">Archive</div>',
+            unsafe_allow_html=True,
+        )
 
-    if st.button("💬", key="rail_brief", help="Context briefing (optional)", use_container_width=True):
-        st.session_state.right_open = True
-        st.session_state.briefing_open = True
-        st.rerun()
-    st.markdown(
-        '<div class="co-rail-label">Briefing</div>',
-        unsafe_allow_html=True,
-    )
+        if st.button(
+            "💬",
+            key="rail_brief",
+            help="Context briefing (optional)",
+            use_container_width=True,
+        ):
+            st.session_state.right_open = True
+            st.session_state.briefing_open = True
+            st.rerun()
+        st.markdown(
+            '<div class="co-rail-label">Briefing</div>',
+            unsafe_allow_html=True,
+        )
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -551,24 +597,19 @@ if right_panel is not None:
     with right_panel:
         st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
 
-        top_r1, top_r2 = st.columns([4, 1])
-        with top_r1:
-            st.markdown(
-                '<div class="co-section-label">Analysis</div>',
-                unsafe_allow_html=True,
-            )
-        with top_r2:
-            if st.button("⟩", key="close_right", help="Collapse right panel"):
-                st.session_state.right_open = False
-                st.rerun()
+        st.markdown(
+            '<div class="co-section-label">Analysis</div>',
+            unsafe_allow_html=True,
+        )
 
-        # While running: discourage changing agent mid-flight
         if st.session_state.is_running:
             st.info(
                 f"Running **{st.session_state.selected_agent}**. "
                 "Agent selection is locked until this run finishes."
             )
-            st.caption(AGENT_DESCRIPTIONS.get(st.session_state.selected_agent, ""))
+            st.caption(
+                AGENT_DESCRIPTIONS.get(st.session_state.selected_agent, "")
+            )
             selected_agent = st.session_state.selected_agent
         else:
             st.markdown(
@@ -587,7 +628,7 @@ if right_panel is not None:
                 index=a_index,
                 label_visibility="collapsed",
                 key="agent_select_box",
-                help="Choose what to run. Change this before starting a run.",
+                help="Choose what to run before starting.",
             )
             st.session_state.selected_agent = selected_agent
             st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
@@ -606,7 +647,11 @@ if right_panel is not None:
         else:
             for item in st.session_state.insight_archive[:12]:
                 label = f"{item['agent']} · {item['time']}"
-                if st.button(label, key=f"arch_{item['id']}", use_container_width=True):
+                if st.button(
+                    label,
+                    key=f"arch_{item['id']}",
+                    use_container_width=True,
+                ):
                     st.session_state.active_insight_id = item["id"]
                     st.session_state.result = item["text"]
                     st.session_state.result_agent = item["agent"]
@@ -652,7 +697,9 @@ if right_panel is not None:
                     unsafe_allow_html=True,
                 )
                 for item in st.session_state.insight_archive[:3]:
-                    st.markdown(f"- **{item['agent']}** ({item['time']})")
+                    st.markdown(
+                        f"- **{item['agent']}** ({item['time']})"
+                    )
 
             user_note = st.chat_input("Add a short note for this run")
             if user_note:
@@ -686,8 +733,7 @@ with center:
                 Career operations workspace
             </div>
             <div style="color:#cbd5e1;font-size:0.88rem;margin-top:0.2rem;">
-                Use the side rails to open Model / Agent / Archive / Briefing.
-                Add CV and job, then run from the Run tab.
+                Use the side rails when panels are closed. Add CV and job, then run from the Run tab.
             </div>
         </div>
         """,
@@ -703,7 +749,7 @@ with center:
     if st.session_state.is_running:
         st.warning(
             f"Analysis in progress: **{st.session_state.selected_agent}**. "
-            "Open the right rail (Agent) after the run to choose a different type."
+            "Agent selection is locked until the run finishes."
         )
 
     tab_cv, tab_job, tab_run = st.tabs(["CV", "Job description", "Run"])
@@ -823,14 +869,15 @@ with center:
                         if is_daily_quota_error(error):
                             show_quota_error(error)
                         else:
-                            st.error("The agent could not complete this request.")
+                            st.error(
+                                "The agent could not complete this request."
+                            )
                             with st.expander("Technical details"):
                                 st.code(str(error))
                     finally:
                         st.session_state.is_running = False
                         st.rerun()
 
-    # Active insight
     active = get_active_insight()
     display_text = st.session_state.result
     display_agent = st.session_state.result_agent
