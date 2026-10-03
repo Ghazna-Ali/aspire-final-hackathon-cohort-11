@@ -94,6 +94,23 @@ Users select the agent they want to use rather than being forced through a prede
 | 🎤 **Interview Agent**   | Generates technical, behavioral, situational, and job-specific interview preparation                             |
 | 🔎 **Critic Agent**      | Reviews application information and identifies weaknesses, missing evidence, gaps, and potential improvements    |
 
+### Career features
+
+These features are available in the same agent dropdown. Each one is powered by an existing agent.
+
+| Feature                        | Powered by           | What it does                                                                                                       |
+| ------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 🎯 **Job Match Score**         | CV Analyst           | Compares the CV with the job description and returns a match percentage, a category breakdown, and reasons          |
+| 🧩 **Skill Gap Detector**      | CV Analyst           | Finds required job skills that are missing or weak in the CV, ranked by importance                                  |
+| ✉️ **Cover Letter Generation** | Application Agent    | Writes a customized cover letter from the CV and job description                                                    |
+| 🗺️ **Career Roadmap**          | Manager Agent        | Builds a phased learning and career roadmap from the candidate's skills, weaknesses, and target job                 |
+
+**Tips**
+
+* Mention the company, hiring manager, or preferred tone in the *Career Request* to personalize the cover letter.
+* Mention a timeframe and weekly study hours in the *Career Request* (for example "6 months, 10 hours per week") to shape the roadmap. The default is 90 days and 8 hours per week.
+* The Job Match Score shows a score meter above the report. The percentage is calculated from four weighted categories: Technical Skills 40%, Experience and Projects 30%, Education and Certifications 10%, Keywords and Soft Skills 20%.
+
 ---
 
 # 🧠 Agent Details
@@ -474,6 +491,7 @@ Career-Assistant-AI/
 ├── app.py
 ├── agents.py
 ├── tasks.py
+├── features.py
 ├── tools.py
 ├── memory.py
 ├── requirements.txt
@@ -521,6 +539,14 @@ Each agent is configured for a specific career-related purpose.
 Contains task definitions and instructions used by the agents.
 
 Tasks help translate the user's request into structured AI work.
+
+---
+
+## `features.py`
+
+Contains the Job Match Score, Skill Gap Detector, Cover Letter Generation, and Career Roadmap features.
+
+Each feature adds a new task that reuses an existing agent from `agents.py`. `app.py` merges these into its agent, task, and description registries.
 
 ---
 
