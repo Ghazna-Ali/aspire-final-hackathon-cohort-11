@@ -661,7 +661,7 @@ with center:
         unsafe_allow_html=True,
     )
 
-    c1, c2, c3, c4 = st.columns([0.9, 0.9, 1.5, 3.0])
+    c1, c2, c3, c4 = st.columns([0.9, 0.9, 2.5, 3.0])
     with c1:
         label_l = "Hide Settings" if left_open else "Show Settings"
         if st.button(label_l, key="tog_left", use_container_width=True):
