@@ -1227,7 +1227,7 @@ else:
 with center:
 
     st.markdown(
-        
+        """
         <div class="co-hero">
 
             <div class="co-kicker">
@@ -1245,7 +1245,8 @@ with center:
                 results in <strong>Analysis</strong>.
             </p>
 
-        </div>,
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -1824,4 +1825,3 @@ with center:
         "</div>",
         unsafe_allow_html=True,
     )
-
