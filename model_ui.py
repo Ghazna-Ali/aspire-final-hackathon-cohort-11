@@ -1,4 +1,5 @@
 import streamlit as st
+
 from model_manager import (
     MODEL_CATALOG,
     configure_agents,
@@ -9,13 +10,27 @@ from model_manager import (
 )
 
 
-def render_model_selector(agents, container=None):
-    ui = container if container is not None else st.sidebar
+def render_model_selector(
+    agents,
+    container=None,
+):
+    ui = (
+        container
+        if container is not None
+        else st.sidebar
+    )
+
     ui.markdown("##### Model")
 
     keys = list(MODEL_CATALOG.keys())
+
     preferred = default_model_key()
-    current = st.session_state.get("selected_model_key", preferred)
+
+    current = st.session_state.get(
+        "selected_model_key",
+        preferred,
+    )
+
     if current not in keys:
         current = preferred
 
@@ -31,24 +46,46 @@ def render_model_selector(agents, container=None):
         format_func=model_label,
         key="model_selector",
         label_visibility="collapsed",
-        help="Green = key OK. Grey = missing or invalid key.",
+        help="Green = Gemini API key is valid. "
+             "Grey = Gemini API key is missing or invalid.",
     )
+
     st.session_state.selected_model_key = selected
+
     spec = selected_model_info(selected)
-    ok, message = validate_api_key(spec.secret_key)
+
+    ok, message = validate_api_key(
+        spec.secret_key
+    )
 
     if not ok:
         ui.error(message)
-        ui.caption(f"Add `{spec.secret_key}` in Streamlit Secrets.")
+        ui.caption(
+            f"Add `{spec.secret_key}` "
+            "in Streamlit Secrets."
+        )
         return False
 
     ui.success(message)
-    ui.caption(f"{spec.provider} · {spec.tier}")
+
+    ui.caption(
+        f"{spec.provider} · {spec.tier}"
+    )
 
     try:
-        configure_agents(agents, selected)
+        configure_agents(
+            agents,
+            selected,
+        )
+
         st.session_state.active_model_key = selected
+
         return True
+
     except Exception as exc:
-        ui.error(f"Could not initialize {spec.display_name}: {exc}")
+        ui.error(
+            f"Could not initialize "
+            f"{spec.display_name}: {exc}"
+        )
+
         return False
