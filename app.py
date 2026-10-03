@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import tempfile
 import uuid
@@ -28,9 +29,9 @@ from features import (
     parse_match_score,
 )
 
-# ------------------------------------------------------------
+# ============================================================
 # PAGE
-# ------------------------------------------------------------
+# ============================================================
 st.set_page_config(
     page_title="CareerOps AI",
     page_icon="🎯",
@@ -38,79 +39,92 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ------------------------------------------------------------
-# PROFESSIONAL CSS
-# ------------------------------------------------------------
+# ============================================================
+# CSS — panels, rails, scroll regions
+# ============================================================
 st.markdown(
     """
     <style>
-    /* Tighten Streamlit chrome */
     header[data-testid="stHeader"] { background: transparent; }
     div[data-testid="stToolbar"] { display: none; }
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
     .block-container {
-        padding-top: 1.25rem;
-        padding-bottom: 2rem;
-        max-width: 1400px;
+        padding-top: 0.85rem;
+        padding-bottom: 1.5rem;
+        max-width: 1600px;
     }
 
-    /* Cards */
-    .co-card {
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 10px;
-        padding: 1rem 1.1rem;
-        margin-bottom: 0.75rem;
-        box-shadow: 0 1px 2px rgba(16,24,40,0.04);
+    /* Panel scroll areas (approximate independent scroll) */
+    .co-scroll {
+        max-height: calc(100vh - 5.5rem);
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding-right: 0.35rem;
+        scrollbar-width: thin;
+        scrollbar-color: #94a3b8 transparent;
     }
+    .co-scroll::-webkit-scrollbar { width: 6px; }
+    .co-scroll::-webkit-scrollbar-thumb {
+        background: #94a3b8;
+        border-radius: 999px;
+    }
+
+    .co-rail {
+        background: #0f172a;
+        border-radius: 10px;
+        padding: 0.55rem 0.35rem;
+        text-align: center;
+        min-height: 280px;
+    }
+    .co-rail-label {
+        font-size: 0.65rem;
+        color: #94a3b8;
+        letter-spacing: 0.04em;
+        margin-top: 0.15rem;
+        line-height: 1.2;
+    }
+
     .co-card-dark {
         background: #0f172a;
         color: #f8fafc;
         border-radius: 10px;
-        padding: 1.1rem 1.25rem;
-        margin-bottom: 1rem;
+        padding: 1rem 1.15rem;
+        margin-bottom: 0.85rem;
     }
     .co-kicker {
-        font-size: 0.7rem;
+        font-size: 0.68rem;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #64748b;
+        color: #94a3b8;
         font-weight: 600;
-        margin-bottom: 0.25rem;
     }
-    .co-title {
-        font-size: 1.55rem;
+    .co-section-label {
+        font-size: 0.72rem;
         font-weight: 700;
-        color: #0f172a;
-        margin: 0 0 0.15rem 0;
-    }
-    .co-sub {
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
         color: #64748b;
-        font-size: 0.95rem;
-        margin-bottom: 0;
+        margin: 0.35rem 0 0.35rem 0;
     }
+    .co-muted { color: #64748b; font-size: 0.82rem; }
     .co-agent-pill {
         display: inline-block;
         background: #eef2ff;
         color: #3730a3;
         border-radius: 999px;
-        padding: 0.25rem 0.75rem;
+        padding: 0.22rem 0.7rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+        margin: 0.35rem 0 0.5rem 0;
+    }
+    .co-field-label {
         font-size: 0.8rem;
         font-weight: 600;
-        margin-top: 0.5rem;
+        color: #334155;
+        margin-bottom: 0.25rem;
     }
-    .co-section-label {
-        font-size: 0.75rem;
-        font-weight: 700;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: #64748b;
-        margin: 0.5rem 0 0.4rem 0;
-    }
-    .co-muted { color: #64748b; font-size: 0.85rem; }
 
-    /* Buttons — sober, not playful */
     div.stButton > button {
         border-radius: 8px;
         font-weight: 600;
@@ -123,31 +137,19 @@ st.markdown(
         color: #ffffff;
         border: 1px solid #1e293b;
     }
-    div.stButton > button:hover {
-        border-color: #94a3b8;
-    }
+    div.stButton > button:hover { border-color: #94a3b8; }
     div.stButton > button[kind="primary"]:hover {
         background: #0f172a;
         border-color: #0f172a;
-    }
-
-    /* Archive list items */
-    .co-archive-item {
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 0.55rem 0.7rem;
-        margin-bottom: 0.4rem;
-        background: #f8fafc;
-        font-size: 0.82rem;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# ------------------------------------------------------------
+# ============================================================
 # REGISTRIES
-# ------------------------------------------------------------
+# ============================================================
 AGENTS = {
     "Manager": manager_agent,
     "Job Analyst": job_analyst_agent,
@@ -172,9 +174,9 @@ AGENTS.update(FEATURE_AGENTS)
 AGENT_DESCRIPTIONS.update(FEATURE_DESCRIPTIONS)
 TASKS.update(FEATURE_TASKS)
 
-# ------------------------------------------------------------
+# ============================================================
 # SESSION STATE
-# ------------------------------------------------------------
+# ============================================================
 defaults = {
     "cv_text": "",
     "job_description": "",
@@ -183,10 +185,13 @@ defaults = {
     "result": "",
     "result_agent": "",
     "last_run_time": None,
-    "insight_archive": [],          # list of past runs
-    "active_insight_id": None,      # currently viewed archive item
-    "briefing_open": False,         # optional context panel
-    "chat_messages": [],            # lightweight briefing thread
+    "insight_archive": [],
+    "active_insight_id": None,
+    "briefing_open": False,
+    "chat_messages": [],
+    "left_open": True,
+    "right_open": True,
+    "is_running": False,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -211,6 +216,7 @@ def reset_everything():
     st.session_state.insight_archive = []
     st.session_state.active_insight_id = None
     st.session_state.chat_messages = []
+    st.session_state.is_running = False
 
 
 def archive_insight(agent_name, text, career_request=""):
@@ -222,7 +228,6 @@ def archive_insight(agent_name, text, career_request=""):
         "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
     st.session_state.insight_archive.insert(0, item)
-    # keep last 30
     st.session_state.insight_archive = st.session_state.insight_archive[:30]
     st.session_state.active_insight_id = item["id"]
     return item
@@ -238,9 +243,6 @@ def get_active_insight():
     return None
 
 
-# ------------------------------------------------------------
-# ERROR HELPERS
-# ------------------------------------------------------------
 def is_daily_quota_error(error):
     message = str(error).upper()
     patterns = [
@@ -302,7 +304,8 @@ def run_selected_agent(agent_name, cv_text, job_description, career_request):
     inputs = {
         "cv_text": cv_text or "(not provided)",
         "job_description": job_description or "(not provided)",
-        "career_request": career_request or "Produce the standard analysis for this agent.",
+        "career_request": career_request
+        or "Produce the standard analysis for this agent.",
     }
     try:
         memory = CareerMemory()
@@ -332,7 +335,6 @@ def show_quota_error(error):
 
 
 def validate_inputs():
-    """Career request is optional. CV + job are required for most agents."""
     errors = []
     if not st.session_state.cv_text.strip():
         errors.append("Add your CV (upload or paste).")
@@ -341,16 +343,11 @@ def validate_inputs():
     return errors
 
 
-# ------------------------------------------------------------
-# RESULT MODULES (scannable UI, not walls of text)
-# ------------------------------------------------------------
 def render_modular_result(agent_name, text):
-    """Break long output into modules: score cards, sections, full text on demand."""
     if not text:
         st.info("No content.")
         return
 
-    # Job Match Score → metrics + progress
     if agent_name == "Job Match Score":
         match = parse_match_score(text)
         if match:
@@ -364,21 +361,19 @@ def render_modular_result(agent_name, text):
                     for col, (cat, val) in zip(cols, match["breakdown"].items()):
                         col.metric(cat.split()[0], f"{val}")
 
-    # Legitimacy → highlight score line if present
     if agent_name == "Job Legitimacy Check":
-        import re
         m = re.search(r"Legitimacy Score:\s*(\d{1,3})", text, re.I)
         if m:
             score = min(100, max(0, int(m.group(1))))
             st.metric("Legitimacy score", f"{score}/100")
             st.progress(score / 100.0)
 
-    # Section chips from markdown headings
-    import re
     sections = re.split(r"(?m)^##\s+", text)
     if len(sections) > 1:
-        st.markdown('<div class="co-section-label">Modules</div>', unsafe_allow_html=True)
-        # first chunk may be preamble
+        st.markdown(
+            '<div class="co-section-label">Modules</div>',
+            unsafe_allow_html=True,
+        )
         for block in sections[1:]:
             lines = block.strip().split("\n", 1)
             title = lines[0].strip()
@@ -392,115 +387,307 @@ def render_modular_result(agent_name, text):
             st.markdown(text)
 
 
-# ------------------------------------------------------------
-# LAYOUT: LEFT | CENTER | RIGHT
-# ------------------------------------------------------------
-left, center, right = st.columns([1.05, 2.4, 1.15], gap="medium")
+# ============================================================
+# COLUMN WIDTHS based on open/closed panels
+# ============================================================
+# Layout slots: [left_rail | left_panel? | center | right_panel? | right_rail]
+left_open = st.session_state.left_open
+right_open = st.session_state.right_open
 
-# ====================== LEFT: model, status, reset ======================
-with left:
-    st.markdown('<div class="co-section-label">Workspace</div>', unsafe_allow_html=True)
-    MODEL_READY = render_model_selector(AGENTS, container=left)
+# Narrow rails always present (~0.28); panels ~1.1 when open
+widths = [0.32]
+if left_open:
+    widths.append(1.15)
+widths.append(2.5)
+if right_open:
+    widths.append(1.15)
+widths.append(0.32)
 
-    st.markdown('<div class="co-section-label">Status</div>', unsafe_allow_html=True)
-    if MODEL_READY:
-        st.success("Model ready")
-    else:
-        st.warning("Configure an API key to run")
-    st.caption("One agent runs per action. Past outputs stay in Insight Archive.")
+cols = st.columns(widths, gap="small")
 
-    st.markdown("---")
-    if st.button("Reset workspace", use_container_width=True):
-        reset_everything()
+# Map indices
+idx = 0
+left_rail = cols[idx]
+idx += 1
+left_panel = None
+if left_open:
+    left_panel = cols[idx]
+    idx += 1
+center = cols[idx]
+idx += 1
+right_panel = None
+if right_open:
+    right_panel = cols[idx]
+    idx += 1
+right_rail = cols[idx]
+
+MODEL_READY = False
+selected_agent = st.session_state.selected_agent
+
+# ============================================================
+# LEFT RAIL (always visible)
+# ============================================================
+with left_rail:
+    st.markdown('<div class="co-rail">', unsafe_allow_html=True)
+
+    tip_left = "Collapse workspace" if left_open else "Open workspace (model & status)"
+    if st.button("☰", key="toggle_left", help=tip_left, use_container_width=True):
+        st.session_state.left_open = not st.session_state.left_open
         st.rerun()
-
-# ====================== RIGHT: agent + insight archive + briefing ======================
-with right:
-    st.markdown('<div class="co-section-label">Analysis type</div>', unsafe_allow_html=True)
-
-    agent_names = list(AGENTS.keys())
-    try:
-        a_index = agent_names.index(st.session_state.selected_agent)
-    except ValueError:
-        a_index = 0
-
-    selected_agent = st.selectbox(
-        "Agent",
-        options=agent_names,
-        index=a_index,
-        label_visibility="collapsed",
-        key="agent_select_box",
+    st.markdown(
+        '<div class="co-rail-label">Workspace</div>',
+        unsafe_allow_html=True,
     )
-    st.session_state.selected_agent = selected_agent
-    st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
 
-    st.markdown('<div class="co-section-label">Insight Archive</div>', unsafe_allow_html=True)
-    st.caption("Saved outputs from previous runs. Switching agents no longer loses them.")
+    # Model icon — opens left if closed
+    if st.button("◈", key="rail_model", help="Model settings", use_container_width=True):
+        st.session_state.left_open = True
+        st.rerun()
+    st.markdown(
+        '<div class="co-rail-label">Model</div>',
+        unsafe_allow_html=True,
+    )
 
-    if not st.session_state.insight_archive:
-        st.markdown(
-            '<p class="co-muted">No saved insights yet. Run an analysis to start building your archive.</p>',
-            unsafe_allow_html=True,
-        )
-    else:
-        for item in st.session_state.insight_archive[:12]:
-            label = f"{item['agent']} · {item['time']}"
-            if st.button(label, key=f"arch_{item['id']}", use_container_width=True):
-                st.session_state.active_insight_id = item["id"]
-                st.session_state.result = item["text"]
-                st.session_state.result_agent = item["agent"]
-                st.session_state.last_run_time = item["time"]
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ============================================================
+# LEFT PANEL
+# ============================================================
+if left_panel is not None:
+    with left_panel:
+        st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
+
+        top_l1, top_l2 = st.columns([4, 1])
+        with top_l1:
+            st.markdown(
+                '<div class="co-section-label">Workspace</div>',
+                unsafe_allow_html=True,
+            )
+        with top_l2:
+            if st.button("⟨", key="close_left", help="Collapse left panel"):
+                st.session_state.left_open = False
                 st.rerun()
 
-    st.markdown("---")
-    st.markdown('<div class="co-section-label">Context briefing</div>', unsafe_allow_html=True)
-    st.caption("Optional. Not required to run an agent. Open when you want extra instructions or to refer to past insights.")
+        MODEL_READY = render_model_selector(AGENTS, container=left_panel)
 
-    briefing_open = st.toggle("Open briefing panel", value=st.session_state.briefing_open)
-    st.session_state.briefing_open = briefing_open
-
-    if briefing_open:
-        st.text_area(
-            "Extra instructions (optional)",
-            value=st.session_state.career_request,
-            key="career_request_box",
-            height=100,
-            placeholder="e.g. Focus on remote roles in Europe. Prefer concise bullet points.",
+        st.markdown(
+            '<div class="co-section-label">Status</div>',
+            unsafe_allow_html=True,
         )
-        st.session_state.career_request = st.session_state.get(
-            "career_request_box", st.session_state.career_request
-        )
+        if MODEL_READY:
+            st.success("Model ready")
+        else:
+            st.warning("Configure an API key")
+        st.caption("One agent runs per action. Outputs stay in Insight Archive.")
 
-        # Lightweight memory: show last 3 archive titles as context chips
-        if st.session_state.insight_archive:
-            st.caption("Recent insights available to reference:")
-            for item in st.session_state.insight_archive[:3]:
-                st.markdown(f"- **{item['agent']}** ({item['time']})")
-
-        user_note = st.chat_input("Note for this run (optional)")
-        if user_note:
-            st.session_state.chat_messages.append(
-                {"role": "user", "content": user_note}
-            )
-            # fold into career_request
-            st.session_state.career_request = (
-                (st.session_state.career_request + "\n" + user_note).strip()
-            )
+        st.markdown("---")
+        if st.button("Reset workspace", use_container_width=True, key="reset_ws"):
+            reset_everything()
             st.rerun()
 
-        for msg in st.session_state.chat_messages[-6:]:
-            with st.chat_message(msg["role"]):
-                st.write(msg["content"])
+        st.markdown("</div>", unsafe_allow_html=True)
+else:
+    # Still need MODEL_READY when left is closed — compute without UI
+    from model_manager import is_model_available, default_model_key
 
-# ====================== CENTER: main work surface ======================
+    key = st.session_state.get("selected_model_key", default_model_key())
+    MODEL_READY = is_model_available(key)
+    # Re-apply LLM if possible so runs still work with panel closed
+    if MODEL_READY:
+        try:
+            from model_manager import configure_agents
+
+            configure_agents(AGENTS, key)
+        except Exception:
+            MODEL_READY = False
+
+# ============================================================
+# RIGHT RAIL (always visible)
+# ============================================================
+with right_rail:
+    st.markdown('<div class="co-rail">', unsafe_allow_html=True)
+
+    tip_right = "Collapse analysis panel" if right_open else "Open analysis panel"
+    if st.button("☰", key="toggle_right", help=tip_right, use_container_width=True):
+        st.session_state.right_open = not st.session_state.right_open
+        st.rerun()
+    st.markdown(
+        '<div class="co-rail-label">Panel</div>',
+        unsafe_allow_html=True,
+    )
+
+    agent_hover = f"Analysis type — currently: {st.session_state.selected_agent}"
+    if st.button("◉", key="rail_agent", help=agent_hover, use_container_width=True):
+        st.session_state.right_open = True
+        st.rerun()
+    st.markdown(
+        '<div class="co-rail-label">Agent</div>',
+        unsafe_allow_html=True,
+    )
+
+    if st.button("▦", key="rail_archive", help="Insight Archive", use_container_width=True):
+        st.session_state.right_open = True
+        st.rerun()
+    st.markdown(
+        '<div class="co-rail-label">Archive</div>',
+        unsafe_allow_html=True,
+    )
+
+    if st.button("💬", key="rail_brief", help="Context briefing (optional)", use_container_width=True):
+        st.session_state.right_open = True
+        st.session_state.briefing_open = True
+        st.rerun()
+    st.markdown(
+        '<div class="co-rail-label">Briefing</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ============================================================
+# RIGHT PANEL
+# ============================================================
+if right_panel is not None:
+    with right_panel:
+        st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
+
+        top_r1, top_r2 = st.columns([4, 1])
+        with top_r1:
+            st.markdown(
+                '<div class="co-section-label">Analysis</div>',
+                unsafe_allow_html=True,
+            )
+        with top_r2:
+            if st.button("⟩", key="close_right", help="Collapse right panel"):
+                st.session_state.right_open = False
+                st.rerun()
+
+        # While running: discourage changing agent mid-flight
+        if st.session_state.is_running:
+            st.info(
+                f"Running **{st.session_state.selected_agent}**. "
+                "Agent selection is locked until this run finishes."
+            )
+            st.caption(AGENT_DESCRIPTIONS.get(st.session_state.selected_agent, ""))
+            selected_agent = st.session_state.selected_agent
+        else:
+            st.markdown(
+                '<div class="co-field-label">Analysis type</div>',
+                unsafe_allow_html=True,
+            )
+            agent_names = list(AGENTS.keys())
+            try:
+                a_index = agent_names.index(st.session_state.selected_agent)
+            except ValueError:
+                a_index = 0
+
+            selected_agent = st.selectbox(
+                "Analysis type",
+                options=agent_names,
+                index=a_index,
+                label_visibility="collapsed",
+                key="agent_select_box",
+                help="Choose what to run. Change this before starting a run.",
+            )
+            st.session_state.selected_agent = selected_agent
+            st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
+
+        st.markdown(
+            '<div class="co-section-label">Insight Archive</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption("Previous outputs. Switching agents does not delete them.")
+
+        if not st.session_state.insight_archive:
+            st.markdown(
+                '<p class="co-muted">No saved insights yet.</p>',
+                unsafe_allow_html=True,
+            )
+        else:
+            for item in st.session_state.insight_archive[:12]:
+                label = f"{item['agent']} · {item['time']}"
+                if st.button(label, key=f"arch_{item['id']}", use_container_width=True):
+                    st.session_state.active_insight_id = item["id"]
+                    st.session_state.result = item["text"]
+                    st.session_state.result_agent = item["agent"]
+                    st.session_state.last_run_time = item["time"]
+                    st.rerun()
+
+        st.markdown("---")
+        st.markdown(
+            '<div class="co-section-label">Context briefing</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption("Optional guidance for the agent. Not required to run.")
+
+        briefing_open = st.toggle(
+            "Show briefing fields",
+            value=st.session_state.briefing_open,
+            key="briefing_toggle",
+        )
+        st.session_state.briefing_open = briefing_open
+
+        if briefing_open:
+            st.markdown(
+                '<div class="co-field-label">Extra instructions</div>',
+                unsafe_allow_html=True,
+            )
+            st.caption("Optional — only used if you fill this in.")
+            briefing_text = st.text_area(
+                "Extra instructions",
+                value=st.session_state.career_request,
+                key="career_request_box",
+                height=110,
+                placeholder=(
+                    "Example: Focus on remote roles in Europe. "
+                    "Keep answers concise."
+                ),
+                label_visibility="collapsed",
+            )
+            st.session_state.career_request = briefing_text
+
+            if st.session_state.insight_archive:
+                st.markdown(
+                    '<div class="co-field-label">Recent insights</div>',
+                    unsafe_allow_html=True,
+                )
+                for item in st.session_state.insight_archive[:3]:
+                    st.markdown(f"- **{item['agent']}** ({item['time']})")
+
+            user_note = st.chat_input("Add a short note for this run")
+            if user_note:
+                st.session_state.chat_messages.append(
+                    {"role": "user", "content": user_note}
+                )
+                st.session_state.career_request = (
+                    (st.session_state.career_request + "\n" + user_note).strip()
+                )
+                st.rerun()
+
+            for msg in st.session_state.chat_messages[-6:]:
+                with st.chat_message(msg["role"]):
+                    st.write(msg["content"])
+
+        st.markdown("</div>", unsafe_allow_html=True)
+else:
+    selected_agent = st.session_state.selected_agent
+
+# ============================================================
+# CENTER
+# ============================================================
 with center:
+    st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
+
     st.markdown(
         """
         <div class="co-card-dark">
-            <div class="co-kicker" style="color:#94a3b8;">CareerOps AI</div>
-            <div style="font-size:1.45rem;font-weight:700;margin:0;">Career operations workspace</div>
-            <div style="color:#cbd5e1;font-size:0.9rem;margin-top:0.25rem;">
-                Select an analysis type on the right, add CV and job below, then run.
+            <div class="co-kicker">CareerOps AI</div>
+            <div style="font-size:1.35rem;font-weight:700;margin:0.15rem 0 0 0;">
+                Career operations workspace
+            </div>
+            <div style="color:#cbd5e1;font-size:0.88rem;margin-top:0.2rem;">
+                Use the side rails to open Model / Agent / Archive / Briefing.
+                Add CV and job, then run from the Run tab.
             </div>
         </div>
         """,
@@ -513,14 +700,24 @@ with center:
     )
     st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
 
-    # ---- Inputs in compact tabs (less scroll) ----
+    if st.session_state.is_running:
+        st.warning(
+            f"Analysis in progress: **{st.session_state.selected_agent}**. "
+            "Open the right rail (Agent) after the run to choose a different type."
+        )
+
     tab_cv, tab_job, tab_run = st.tabs(["CV", "Job description", "Run"])
 
     with tab_cv:
+        st.markdown(
+            '<div class="co-field-label">Candidate CV</div>',
+            unsafe_allow_html=True,
+        )
         cv_upload = st.file_uploader(
             "Upload CV",
             type=["pdf", "docx", "txt"],
             help="PDF, DOCX, or TXT",
+            label_visibility="collapsed",
         )
         if cv_upload is not None:
             try:
@@ -557,6 +754,10 @@ with center:
         )
 
     with tab_job:
+        st.markdown(
+            '<div class="co-field-label">Job description</div>',
+            unsafe_allow_html=True,
+        )
         st.session_state.job_description = st.text_area(
             "Job description",
             value=st.session_state.job_description,
@@ -567,30 +768,39 @@ with center:
 
     with tab_run:
         st.markdown(
-            f"**Ready to run:** `{selected_agent}`"
+            '<div class="co-field-label">Run analysis</div>',
+            unsafe_allow_html=True,
         )
+        st.markdown(f"**Selected:** `{selected_agent}`")
         if st.session_state.career_request.strip():
             st.caption("Optional briefing will be included.")
         else:
-            st.caption("No extra briefing — agent will use its standard task.")
+            st.caption("No extra briefing — standard task for this agent.")
 
+        run_disabled = st.session_state.is_running
         run_clicked = st.button(
             f"Run {selected_agent}",
             type="primary",
             use_container_width=True,
+            disabled=run_disabled,
+            key="run_main",
         )
 
-        if run_clicked:
+        if run_clicked and not st.session_state.is_running:
             if not MODEL_READY:
-                st.error("Selected model is not available. Fix the API key in the left panel.")
+                st.error(
+                    "Selected model is not available. "
+                    "Open the left rail → Model and fix the API key."
+                )
             else:
                 errors = validate_inputs()
                 if errors:
                     for e in errors:
                         st.warning(e)
                 else:
-                    with st.spinner(f"Running {selected_agent}…"):
-                        try:
+                    st.session_state.is_running = True
+                    try:
+                        with st.spinner(f"Running {selected_agent}…"):
                             result = run_selected_agent(
                                 agent_name=selected_agent,
                                 cv_text=st.session_state.cv_text,
@@ -600,25 +810,27 @@ with center:
                             result_text = extract_result_text(result)
                             st.session_state.result = result_text
                             st.session_state.result_agent = selected_agent
-                            st.session_state.last_run_time = datetime.now().strftime(
-                                "%Y-%m-%d %H:%M:%S"
+                            st.session_state.last_run_time = (
+                                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             )
                             archive_insight(
                                 selected_agent,
                                 result_text,
                                 st.session_state.career_request,
                             )
-                            st.success("Analysis complete. Saved to Insight Archive.")
-                            st.rerun()
-                        except Exception as error:
-                            if is_daily_quota_error(error):
-                                show_quota_error(error)
-                            else:
-                                st.error("The agent could not complete this request.")
-                                with st.expander("Technical details"):
-                                    st.code(str(error))
+                            st.success("Complete. Saved to Insight Archive.")
+                    except Exception as error:
+                        if is_daily_quota_error(error):
+                            show_quota_error(error)
+                        else:
+                            st.error("The agent could not complete this request.")
+                            with st.expander("Technical details"):
+                                st.code(str(error))
+                    finally:
+                        st.session_state.is_running = False
+                        st.rerun()
 
-    # ---- Active result surface ----
+    # Active insight
     active = get_active_insight()
     display_text = st.session_state.result
     display_agent = st.session_state.result_agent
@@ -631,14 +843,16 @@ with center:
 
     if display_text:
         st.markdown("---")
-        st.markdown('<div class="co-section-label">Insight</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="co-section-label">Insight</div>',
+            unsafe_allow_html=True,
+        )
         st.markdown(f"**{display_agent}**")
         if display_time:
             st.caption(f"Generated {display_time}")
 
         render_modular_result(display_agent, display_text)
 
-        # PDF download
         safe = display_agent.lower().replace(" ", "_")
         match_for_pdf = (
             parse_match_score(display_text)
@@ -671,3 +885,5 @@ with center:
             )
             with st.expander("PDF unavailable"):
                 st.code(str(pdf_err))
+
+    st.markdown("</div>", unsafe_allow_html=True)
