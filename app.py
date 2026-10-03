@@ -234,6 +234,8 @@ defaults = {
     "chat_messages": [],
     "left_open": True,
     "right_open": True,
+    "left_width": 1.2,
+    "right_width": 1.2,
     "run_status": "idle",
     "run_error": "",
     "run_started_at": None,
@@ -451,12 +453,15 @@ if st.session_state.run_status == "running" and st.session_state.run_started_at:
 left_open = st.session_state.left_open
 right_open = st.session_state.right_open
 
+left_w = float(st.session_state.get("left_width", 1.2))
+right_w = float(st.session_state.get("right_width", 1.2))
+
 widths = []
 if left_open:
-    widths.append(1.2)
+    widths.append(left_w)
 widths.append(2.6)
 if right_open:
-    widths.append(1.2)
+    widths.append(right_w)
 
 cols = st.columns(widths, gap="medium")
 
@@ -489,6 +494,24 @@ if left_panel is not None:
             if st.button("×", key="close_left", help="Hide Settings"):
                 st.session_state.left_open = False
                 st.rerun()
+
+        # Panel width control
+        st.markdown(
+            '<div class="co-field-label">Panel width</div>',
+            unsafe_allow_html=True,
+        )
+        new_left_w = st.slider(
+            "Left panel width",
+            min_value=0.8,
+            max_value=2.5,
+            value=float(st.session_state.left_width),
+            step=0.05,
+            key="left_width_slider",
+            label_visibility="collapsed",
+        )
+        if new_left_w != st.session_state.left_width:
+            st.session_state.left_width = new_left_w
+            st.rerun()
 
         MODEL_READY = render_model_selector(AGENTS, container=left_panel)
 
@@ -532,6 +555,24 @@ if right_panel is not None:
             if st.button("×", key="close_right", help="Hide Analysis"):
                 st.session_state.right_open = False
                 st.rerun()
+
+        # Panel width control
+        st.markdown(
+            '<div class="co-field-label">Panel width</div>',
+            unsafe_allow_html=True,
+        )
+        new_right_w = st.slider(
+            "Right panel width",
+            min_value=0.8,
+            max_value=2.5,
+            value=float(st.session_state.right_width),
+            step=0.05,
+            key="right_width_slider",
+            label_visibility="collapsed",
+        )
+        if new_right_w != st.session_state.right_width:
+            st.session_state.right_width = new_right_w
+            st.rerun()
 
         st.markdown(
             '<div class="co-field-label">Analysis type</div>',
@@ -661,7 +702,8 @@ with center:
         unsafe_allow_html=True,
     )
 
-    c1, c2, c3, c4 = st.columns([1.25, 1.25, 0.3, 2.4])
+    # Reduced gap between Show Analysis and Agent name
+    c1, c2, c3, c4 = st.columns([1.15, 1.15, 0.85, 3.0])
     with c1:
         label_l = "Hide Settings" if left_open else "Show Settings"
         if st.button(label_l, key="tog_left", use_container_width=True):
@@ -669,17 +711,9 @@ with center:
             st.rerun()
     with c2:
         label_r = "Hide Analysis" if right_open else "Show Analysis"
-
-        left_space, button_area, right_space = st.columns([0.2, 1.5, 0.2])
-
-        with button_area:
-            if st.button(
-                label_r,
-                key="tog_right",
-                use_container_width=True
-            ):
-                st.session_state.right_open = not st.session_state.right_open
-                st.rerun()
+        if st.button(label_r, key="tog_right", use_container_width=True):
+            st.session_state.right_open = not st.session_state.right_open
+            st.rerun()
     with c3:
         if st.session_state.run_status in ("running", "error"):
             if st.button("Clear status", key="clear_run", use_container_width=True):
@@ -690,6 +724,7 @@ with center:
             f"Agent: **{selected_agent}**"
             + (" · run active" if run_busy else "")
         )
+
     st.markdown(
         f'<span class="co-agent-pill">{selected_agent}</span>',
         unsafe_allow_html=True,
