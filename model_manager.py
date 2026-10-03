@@ -2,13 +2,82 @@
 Free-tier multi-provider LLM manager for CareerOps AI.
 Gemini + Groq + Cerebras only.
 """
+
 import os
 import re
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
+import litellm
 import streamlit as st
 from crewai import LLM
+
+
+# ---------------------------------------------------------------------------
+# Message sanitizer
+#
+# Newer CrewAI / LiteLLM versions can attach a `cache_breakpoint` field to
+# messages (used for prompt caching). Gemini tolerates it, but Groq rejects it:
+#   "'messages.0' : property 'cache_breakpoint' is unsupported"
+# We strip unsupported keys from every message right before the request is sent.
+# ---------------------------------------------------------------------------
+_UNSUPPORTED_MSG_KEYS = {"cache_breakpoint"}
+
+
+def _clean_content(content):
+    """Strip unsupported keys from structured content blocks (list of dicts)."""
+    if isinstance(content, list):
+        return [
+            {k: v for k, v in block.items() if k not in _UNSUPPORTED_MSG_KEYS}
+            if isinstance(block, dict)
+            else block
+            for block in content
+        ]
+    return content
+
+
+def _clean_messages(messages):
+    if not isinstance(messages, list):
+        return messages
+    cleaned = []
+    for m in messages:
+        if isinstance(m, dict):
+            m = {k: v for k, v in m.items() if k not in _UNSUPPORTED_MSG_KEYS}
+            if "content" in m:
+                m["content"] = _clean_content(m["content"])
+        cleaned.append(m)
+    return cleaned
+
+
+def _install_message_sanitizer() -> None:
+    # Streamlit reruns this module often; only wrap LiteLLM once.
+    if getattr(litellm, "_msg_sanitizer_installed", False):
+        return
+
+    _orig_completion = litellm.completion
+
+    def _safe_completion(*args, **kwargs):
+        if "messages" in kwargs:
+            kwargs["messages"] = _clean_messages(kwargs["messages"])
+        return _orig_completion(*args, **kwargs)
+
+    litellm.completion = _safe_completion
+
+    if hasattr(litellm, "acompletion"):
+        _orig_acompletion = litellm.acompletion
+
+        async def _safe_acompletion(*args, **kwargs):
+            if "messages" in kwargs:
+                kwargs["messages"] = _clean_messages(kwargs["messages"])
+            return await _orig_acompletion(*args, **kwargs)
+
+        litellm.acompletion = _safe_acompletion
+
+    litellm._msg_sanitizer_installed = True
+
+
+_install_message_sanitizer()
+
 
 PLACEHOLDER_VALUES = {
     "", "paste your api key here", "paste_your_api_key_here",
@@ -160,18 +229,20 @@ def default_model_key() -> str:
 def model_label(model_key: str) -> str:
     spec = MODEL_CATALOG[model_key]
     if is_model_available(model_key):
-        return f"🟢 {spec.display_name}  •  {spec.tier}"
-    return f"⚪ {spec.display_name}  •  API key missing/invalid"
+        return f"🟢 {spec.display_name} • {spec.tier}"
+    return f"⚪ {spec.display_name} • API key missing/invalid"
 
 
 def build_llm(model_key: str) -> LLM:
     if model_key not in MODEL_CATALOG:
         raise ValueError(f"Unknown model: {model_key}")
+
     spec = MODEL_CATALOG[model_key]
     api_key = get_api_key(spec.secret_key)
     ok, message = validate_api_key(spec.secret_key, api_key)
     if not ok:
         raise ValueError(message)
+
     return LLM(model=spec.crewai_model, api_key=api_key, temperature=0.2)
 
 
