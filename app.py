@@ -1227,15 +1227,6 @@ else:
 with center:
 
     st.markdown(
-        '<div class="co-scroll">',
-        unsafe_allow_html=True,
-    )
-
-    # ========================================================
-    # HERO
-    # ========================================================
-
-    st.markdown(
         """
         <div class="co-hero">
 
