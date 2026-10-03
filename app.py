@@ -20,9 +20,8 @@ from tasks import TASKS
 from tools import extract_cv_text
 from memory import CareerMemory
 from model_ui import render_model_selector
+from report import build_pdf
 
-# New features: Job Match Score, Skill Gap Detector,
-# Cover Letter Generation, Career Roadmap
 from features import (
     FEATURE_AGENTS,
     FEATURE_TASKS,
@@ -136,7 +135,7 @@ AGENT_DESCRIPTIONS = {
 
 
 # ============================================================
-# NEW FEATURES (added to the existing registries)
+# NEW FEATURES (merged into the registries)
 # ============================================================
 
 AGENTS.update(FEATURE_AGENTS)
@@ -145,9 +144,9 @@ TASKS.update(FEATURE_TASKS)
 
 
 # ============================================================
-# AI MODEL CONFIGURATION
+# AI MODEL CONFIGURATION (free-tier models only)
 # ============================================================
-# All existing agents use the model selected in the sidebar.
+# All agents use the model selected in the sidebar.
 # Models without a configured API key remain visible but cannot run.
 MODEL_READY = render_model_selector(AGENTS)
 
@@ -203,15 +202,8 @@ def reset_everything():
 # ============================================================
 
 def is_daily_quota_error(error):
-    """
-    Detect provider daily/project/model quota exhaustion.
-
-    These errors should NOT be retried immediately because
-    retrying will not restore a daily quota.
-    """
-
+    """Detect provider daily/project/model quota exhaustion."""
     message = str(error).upper()
-
     quota_patterns = [
         "GENERATEREQUESTSPERDAYPERPROJECTPERMODEL-FREETIER",
         "EXCEEDED YOUR CURRENT QUOTA",
@@ -222,21 +214,15 @@ def is_daily_quota_error(error):
         "RATE_LIMIT_EXCEEDED",
         "INSUFFICIENT_QUOTA",
     ]
-
     return any(pattern in message for pattern in quota_patterns)
 
 
 def is_retryable_ai_error(error):
-    """
-    Return True only for temporary errors that may recover
-    after a short delay.
-    """
-
+    """Return True only for temporary errors that may recover."""
     if is_daily_quota_error(error):
         return False
 
     message = str(error).upper()
-
     retryable_patterns = [
         "503",
         "SERVICE_UNAVAILABLE",
@@ -252,7 +238,6 @@ def is_retryable_ai_error(error):
         "BAD GATEWAY",
         "GATEWAY TIMEOUT",
     ]
-
     return any(pattern in message for pattern in retryable_patterns)
 
 
@@ -263,39 +248,27 @@ def is_retryable_ai_error(error):
 def kickoff_with_retry(crew, inputs, max_attempts=4):
     """
     Run the selected agent crew.
-
     Only temporary API failures are retried.
-
-    Daily quota exhaustion is immediately returned to the UI.
+    Daily quota exhaustion is returned immediately.
     """
-
     delays = [5, 15, 30]
 
     for attempt in range(max_attempts):
         try:
             return crew.kickoff(inputs=inputs)
-
         except Exception as error:
-
-            # Daily quota exhaustion should never be repeatedly retried.
             if is_daily_quota_error(error):
                 raise error
-
-            # Non-temporary errors should immediately stop.
             if not is_retryable_ai_error(error):
                 raise error
-
-            # Last attempt
             if attempt == max_attempts - 1:
                 raise error
 
             delay = delays[min(attempt, len(delays) - 1)]
-
             st.warning(
                 f"Temporary AI service error. "
                 f"Retrying in {delay} seconds..."
             )
-
             time.sleep(delay)
 
 
@@ -306,13 +279,10 @@ def kickoff_with_retry(crew, inputs, max_attempts=4):
 def create_single_agent_crew(agent_name):
     """
     Create a Crew containing exactly ONE agent and ONE task.
-
-    No other agent is included in the Crew.
+    No other agent is included.
     """
-
     if agent_name not in AGENTS:
         raise ValueError(f"Unknown agent: {agent_name}")
-
     if agent_name not in TASKS:
         raise ValueError(f"No task configured for: {agent_name}")
 
@@ -325,7 +295,6 @@ def create_single_agent_crew(agent_name):
         process=Process.sequential,
         verbose=True,
     )
-
     return crew
 
 
@@ -333,16 +302,8 @@ def create_single_agent_crew(agent_name):
 # RUN SELECTED AGENT
 # ============================================================
 
-def run_selected_agent(
-    agent_name,
-    cv_text,
-    job_description,
-    career_request,
-):
-    """
-    Execute exactly one selected agent.
-    """
-
+def run_selected_agent(agent_name, cv_text, job_description, career_request):
+    """Execute exactly one selected agent."""
     crew = create_single_agent_crew(agent_name)
 
     inputs = {
@@ -351,47 +312,30 @@ def run_selected_agent(
         "career_request": career_request,
     }
 
-    # --------------------------------------------------------
-    # Optional career memory
-    # --------------------------------------------------------
-
     memory = None
-
     try:
         memory = CareerMemory()
     except Exception:
         memory = None
 
-    # Store current information if the memory class supports it.
     if memory is not None:
-
         try:
             if hasattr(memory, "set_cv"):
                 memory.set_cv(cv_text)
         except Exception:
             pass
-
         try:
             if hasattr(memory, "set_job_description"):
                 memory.set_job_description(job_description)
         except Exception:
             pass
-
         try:
             if hasattr(memory, "set_career_request"):
                 memory.set_career_request(career_request)
         except Exception:
             pass
 
-    # --------------------------------------------------------
-    # Execute selected agent
-    # --------------------------------------------------------
-
-    result = kickoff_with_retry(
-        crew=crew,
-        inputs=inputs,
-    )
-
+    result = kickoff_with_retry(crew=crew, inputs=inputs)
     return result
 
 
@@ -400,21 +344,13 @@ def run_selected_agent(
 # ============================================================
 
 def extract_result_text(result):
-    """
-    Convert CrewAI output into normal text.
-    """
-
+    """Convert CrewAI output into normal text."""
     if result is None:
         return ""
-
-    # CrewAI CrewOutput
     if hasattr(result, "raw"):
         raw = result.raw
-
         if raw is not None:
             return str(raw)
-
-    # Generic object
     return str(result)
 
 
@@ -426,7 +362,6 @@ def show_quota_error(error):
     st.error(
         "The selected AI provider has reported a quota or usage limit."
     )
-
     st.markdown(
         """
         The selected provider/model has reached a quota or usage limit.
@@ -442,7 +377,6 @@ def show_quota_error(error):
         - Add another provider API key in Streamlit Secrets
         """
     )
-
     with st.expander("Technical details"):
         st.code(str(error))
 
@@ -452,45 +386,25 @@ def show_quota_error(error):
 # ============================================================
 
 with st.sidebar:
-
     st.header("⚙️ CareerOps AI")
-
     st.markdown("---")
 
     st.subheader("Agent")
-
     selected_agent = st.selectbox(
         "Choose one agent",
         options=list(AGENTS.keys()),
-        index=list(AGENTS.keys()).index(
-            st.session_state.selected_agent
-        ),
+        index=list(AGENTS.keys()).index(st.session_state.selected_agent),
     )
-
     st.session_state.selected_agent = selected_agent
-
-    st.caption(
-        AGENT_DESCRIPTIONS[selected_agent]
-    )
+    st.caption(AGENT_DESCRIPTIONS[selected_agent])
 
     st.markdown("---")
-
     st.subheader("System Status")
-
-    # Provider/model availability is shown above in the AI Model section.
-    # Keep this area focused on application-level status.
     st.success("Multi-provider AI configuration loaded")
-
-    st.info(
-        "Only the selected agent is executed when you click Run."
-    )
+    st.info("Only the selected agent is executed when you click Run.")
 
     st.markdown("---")
-
-    if st.button(
-        "🗑️ Reset Everything",
-        use_container_width=True,
-    ):
+    if st.button("🗑️ Reset Everything", use_container_width=True):
         reset_everything()
         st.rerun()
 
@@ -503,11 +417,8 @@ st.markdown(
     '<div class="main-header">🎯 CareerOps AI</div>',
     unsafe_allow_html=True,
 )
-
 st.markdown(
-    '<div class="sub-header">'
-    "AI-powered career operations assistant"
-    "</div>",
+    '<div class="sub-header">AI-powered career operations assistant</div>',
     unsafe_allow_html=True,
 )
 
@@ -535,74 +446,38 @@ st.header("📄 Candidate CV")
 
 cv_upload = st.file_uploader(
     "Upload your CV",
-    type=[
-        "pdf",
-        "docx",
-        "txt",
-    ],
+    type=["pdf", "docx", "txt"],
     help="Upload a PDF, DOCX, or TXT CV.",
 )
 
-
 if cv_upload is not None:
-
     try:
-
-        file_extension = (
-            os.path.splitext(cv_upload.name)[1]
-            .lower()
-        )
+        file_extension = os.path.splitext(cv_upload.name)[1].lower()
 
         if file_extension == ".txt":
-
-            st.session_state.cv_text = (
-                cv_upload.read()
-                .decode("utf-8", errors="ignore")
+            st.session_state.cv_text = cv_upload.read().decode(
+                "utf-8", errors="ignore"
             )
-
         else:
-
-            # Create a temporary file for the existing
-            # extract_cv_text() utility.
             with tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=file_extension,
+                delete=False, suffix=file_extension
             ) as temp_file:
-
-                temp_file.write(
-                    cv_upload.getbuffer()
-                )
-
+                temp_file.write(cv_upload.getbuffer())
                 temp_path = temp_file.name
 
             try:
-
-                extracted_text = extract_cv_text.run(
-                    temp_path
-                )
-
+                extracted_text = extract_cv_text.run(temp_path)
                 if extracted_text:
-                    st.session_state.cv_text = (
-                        extracted_text
-                    )
-
+                    st.session_state.cv_text = extracted_text
             finally:
-
                 try:
                     os.remove(temp_path)
                 except Exception:
                     pass
 
-        st.success(
-            f"CV loaded: {cv_upload.name}"
-        )
-
+        st.success(f"CV loaded: {cv_upload.name}")
     except Exception as error:
-
-        st.error(
-            f"Could not read the uploaded CV: {error}"
-        )
-
+        st.error(f"Could not read the uploaded CV: {error}")
 
 cv_text_input = st.text_area(
     "Or paste your CV here",
@@ -610,7 +485,6 @@ cv_text_input = st.text_area(
     height=300,
     placeholder="Paste your CV text here...",
 )
-
 st.session_state.cv_text = cv_text_input
 
 
@@ -626,7 +500,6 @@ job_description_input = st.text_area(
     height=300,
     placeholder="Paste the complete job description here...",
 )
-
 st.session_state.job_description = job_description_input
 
 
@@ -646,7 +519,6 @@ career_request_input = st.text_area(
         "what I should improve before applying."
     ),
 )
-
 st.session_state.career_request = career_request_input
 
 
@@ -656,20 +528,12 @@ st.session_state.career_request = career_request_input
 
 def validate_inputs():
     errors = []
-
     if not st.session_state.cv_text.strip():
         errors.append("Please provide your CV.")
-
     if not st.session_state.job_description.strip():
-        errors.append(
-            "Please provide the job description."
-        )
-
+        errors.append("Please provide the job description.")
     if not st.session_state.career_request.strip():
-        errors.append(
-            "Please describe what you want the agent to do."
-        )
-
+        errors.append("Please describe what you want the agent to do.")
     return errors
 
 
@@ -685,9 +549,7 @@ run_button = st.button(
     use_container_width=True,
 )
 
-
 if run_button:
-
     if not MODEL_READY:
         st.error(
             "The selected AI model is not available. "
@@ -698,68 +560,37 @@ if run_button:
     validation_errors = validate_inputs()
 
     if validation_errors:
-
         for error in validation_errors:
             st.warning(error)
-
     else:
-
         reset_result()
-
         st.session_state.selected_agent = selected_agent
 
-        with st.spinner(
-            f"Running {selected_agent}..."
-        ):
-
+        with st.spinner(f"Running {selected_agent}..."):
             try:
-
                 result = run_selected_agent(
                     agent_name=selected_agent,
                     cv_text=st.session_state.cv_text,
-                    job_description=(
-                        st.session_state.job_description
-                    ),
-                    career_request=(
-                        st.session_state.career_request
-                    ),
+                    job_description=st.session_state.job_description,
+                    career_request=st.session_state.career_request,
                 )
 
-                result_text = extract_result_text(
-                    result
-                )
-
+                result_text = extract_result_text(result)
                 st.session_state.result = result_text
-                st.session_state.result_agent = (
-                    selected_agent
+                st.session_state.result_agent = selected_agent
+                st.session_state.last_run_time = datetime.now().strftime(
+                    "%Y-%m-%d %H:%M:%S"
                 )
-
-                st.session_state.last_run_time = (
-                    datetime.now().strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    )
-                )
-
-                st.success(
-                    f"{selected_agent} completed successfully."
-                )
+                st.success(f"{selected_agent} completed successfully.")
 
             except Exception as error:
-
                 if is_daily_quota_error(error):
-
                     show_quota_error(error)
-
                 else:
-
                     st.error(
-                        "The selected agent could not complete "
-                        "the request."
+                        "The selected agent could not complete the request."
                     )
-
-                    with st.expander(
-                        "Technical error details"
-                    ):
+                    with st.expander("Technical error details"):
                         st.code(str(error))
 
 
@@ -768,83 +599,70 @@ if run_button:
 # ============================================================
 
 if st.session_state.result:
-
     st.markdown("---")
-
-    st.header(
-        f"📊 {st.session_state.result_agent} Result"
-    )
+    st.header(f"📊 {st.session_state.result_agent} Result")
 
     if st.session_state.last_run_time:
+        st.caption(f"Completed: {st.session_state.last_run_time}")
 
-        st.caption(
-            f"Completed: "
-            f"{st.session_state.last_run_time}"
-        )
-
-    # --------------------------------------------------------
-    # Match score meter (only for the Job Match Score feature)
-    # --------------------------------------------------------
-
+    # Match score meter (Job Match Score only)
     if st.session_state.result_agent == "Job Match Score":
-
-        match_score = parse_match_score(
-            st.session_state.result
-        )
-
+        match_score = parse_match_score(st.session_state.result)
         if match_score:
-
-            st.metric(
-                "Job Match Score",
-                f"{match_score['overall']}%",
-            )
-
+            st.metric("Job Match Score", f"{match_score['overall']}%")
             st.progress(match_score["overall"] / 100)
-
             if match_score["breakdown"]:
-
-                score_columns = st.columns(
-                    len(match_score["breakdown"])
-                )
-
+                score_columns = st.columns(len(match_score["breakdown"]))
                 for column, (category, value) in zip(
-                    score_columns,
-                    match_score["breakdown"].items(),
+                    score_columns, match_score["breakdown"].items()
                 ):
                     column.metric(category, f"{value}/100")
 
-    st.markdown(
-        '<div class="result-box">',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        st.session_state.result
-    )
-
-    st.markdown(
-        "</div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="result-box">', unsafe_allow_html=True)
+    st.markdown(st.session_state.result)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     # --------------------------------------------------------
-    # Download
+    # Download as PDF
     # --------------------------------------------------------
 
     safe_agent_name = (
-        st.session_state.result_agent
-        .lower()
-        .replace(" ", "_")
+        st.session_state.result_agent.lower().replace(" ", "_")
     )
+    file_name = f"careerops_{safe_agent_name}_report.pdf"
 
-    file_name = (
-        f"careerops_{safe_agent_name}_report.txt"
-    )
+    match_score_for_pdf = None
+    if st.session_state.result_agent == "Job Match Score":
+        match_score_for_pdf = parse_match_score(st.session_state.result)
 
-    st.download_button(
-        label="⬇️ Download Result",
-        data=st.session_state.result,
-        file_name=file_name,
-        mime="text/plain",
-        use_container_width=True,
-    )
+    try:
+        pdf_bytes = build_pdf(
+            agent=st.session_state.result_agent,
+            task=st.session_state.result_agent,
+            markdown_text=st.session_state.result,
+            generated_at=st.session_state.last_run_time or "",
+            career_request=st.session_state.career_request or "",
+            match_score=match_score_for_pdf,
+        )
+
+        st.download_button(
+            label="⬇️ Download PDF Report",
+            data=pdf_bytes,
+            file_name=file_name,
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    except Exception as pdf_error:
+        st.warning(
+            "Could not build the PDF. Falling back to a text download."
+        )
+        with st.expander("PDF error details"):
+            st.code(str(pdf_error))
+
+        st.download_button(
+            label="⬇️ Download Result (TXT)",
+            data=st.session_state.result,
+            file_name=file_name.replace(".pdf", ".txt"),
+            mime="text/plain",
+            use_container_width=True,
+        )
