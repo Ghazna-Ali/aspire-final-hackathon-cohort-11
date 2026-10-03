@@ -45,92 +45,176 @@ st.set_page_config(
 )
 
 # ============================================================
+# SESSION STATE (theme before CSS)
+# ============================================================
+defaults = {
+    "cv_text": "",
+    "job_description": "",
+    "career_request": "",
+    "selected_agent": "Job Analyst",
+    "result": "",
+    "result_agent": "",
+    "last_run_time": None,
+    "insight_archive": [],
+    "active_insight_id": None,
+    "briefing_open": False,
+    "chat_messages": [],
+    "left_open": True,
+    "right_open": True,
+    "run_status": "idle",
+    "run_error": "",
+    "run_started_at": None,
+    "ui_theme": "Light",
+}
+for k, v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+theme = st.session_state.get("ui_theme", "Light")
+
+if theme == "Dark":
+    page_bg = "#0b1220"
+    text = "#e2e8f0"
+    muted = "#94a3b8"
+    hero_bg = "linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(30,41,59,0.9) 100%)"
+    hero_border = "rgba(148,163,184,0.22)"
+    accent = "#818cf8"
+    pill_bg = "#1e1b4b"
+    pill_fg = "#c7d2fe"
+    card_border = "#334155"
+    btn_bg = "#1e293b"
+    btn_fg = "#f8fafc"
+elif theme == "Soft":
+    page_bg = "#f8fafc"
+    text = "#0f172a"
+    muted = "#64748b"
+    hero_bg = "linear-gradient(125deg, #f8fafc 0%, #eef2ff 55%, #f1f5f9 100%)"
+    hero_border = "rgba(99,102,241,0.14)"
+    accent = "#4f46e5"
+    pill_bg = "#e0e7ff"
+    pill_fg = "#3730a3"
+    card_border = "#e2e8f0"
+    btn_bg = "#ffffff"
+    btn_fg = "#0f172a"
+else:
+    page_bg = "#ffffff"
+    text = "#0f172a"
+    muted = "#64748b"
+    hero_bg = "linear-gradient(120deg, #ffffff 0%, #f8fafc 50%, #f1f5f9 100%)"
+    hero_border = "rgba(15,23,42,0.07)"
+    accent = "#1e293b"
+    pill_bg = "#eef2ff"
+    pill_fg = "#3730a3"
+    card_border = "#e5e7eb"
+    btn_bg = "#ffffff"
+    btn_fg = "#0f172a"
+
+# ============================================================
 # CSS
 # ============================================================
 st.markdown(
-    """
+    f"""
     <style>
-    header[data-testid="stHeader"] { background: transparent; }
-    div[data-testid="stToolbar"] { display: none; }
-    #MainMenu { visibility: hidden; }
-    footer { visibility: hidden; }
-    .block-container {
+    header[data-testid="stHeader"] {{ background: transparent; }}
+    div[data-testid="stToolbar"] {{ display: none; }}
+    #MainMenu {{ visibility: hidden; }}
+    footer {{ visibility: hidden; }}
+    .stApp {{ background: {page_bg}; }}
+    .block-container {{
         padding-top: 0.75rem;
         padding-bottom: 1.5rem;
         max-width: 1400px;
-    }
+    }}
 
-    .co-scroll {
+    .co-scroll {{
         max-height: calc(100vh - 5rem);
         overflow-y: auto;
         overflow-x: hidden;
         padding-right: 0.3rem;
         scrollbar-width: thin;
         scrollbar-color: #94a3b8 transparent;
-    }
-    .co-scroll::-webkit-scrollbar { width: 6px; }
-    .co-scroll::-webkit-scrollbar-thumb {
+    }}
+    .co-scroll::-webkit-scrollbar {{ width: 6px; }}
+    .co-scroll::-webkit-scrollbar-thumb {{
         background: #94a3b8;
         border-radius: 999px;
-    }
+    }}
 
-    .co-card-dark {
-        background: #0f172a;
-        color: #f8fafc;
-        border-radius: 10px;
-        padding: 0.9rem 1.1rem;
-        margin-bottom: 0.75rem;
-    }
-    .co-kicker {
+    /* Soft professional hero — not a solid block */
+    .co-hero {{
+        background: {hero_bg};
+        border: 1px solid {hero_border};
+        border-radius: 14px;
+        padding: 1.05rem 1.2rem 0.85rem 1.2rem;
+        margin-bottom: 0.35rem;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }}
+    .co-kicker {{
         font-size: 0.68rem;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: #94a3b8;
+        color: {muted};
         font-weight: 600;
-    }
-    .co-section-label {
+        margin-bottom: 0.15rem;
+    }}
+    .co-hero-title {{
+        font-size: 1.32rem;
+        font-weight: 700;
+        color: {text};
+        margin: 0;
+        letter-spacing: -0.02em;
+        line-height: 1.25;
+    }}
+    .co-hero-sub {{
+        color: {muted};
+        font-size: 0.86rem;
+        margin: 0.35rem 0 0 0;
+        line-height: 1.45;
+        max-width: 38rem;
+    }}
+
+    .co-section-label {{
         font-size: 0.72rem;
         font-weight: 700;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: #64748b;
+        color: {muted};
         margin: 0.3rem 0 0.3rem 0;
-    }
-    .co-muted { color: #64748b; font-size: 0.82rem; }
-    .co-agent-pill {
+    }}
+    .co-muted {{ color: {muted}; font-size: 0.82rem; }}
+    .co-agent-pill {{
         display: inline-block;
-        background: #eef2ff;
-        color: #3730a3;
+        background: {pill_bg};
+        color: {pill_fg};
         border-radius: 999px;
         padding: 0.2rem 0.65rem;
         font-size: 0.78rem;
         font-weight: 600;
         margin: 0.3rem 0 0.45rem 0;
-    }
-    .co-field-label {
+    }}
+    .co-field-label {{
         font-size: 0.8rem;
         font-weight: 600;
-        color: #334155;
+        color: {text};
         margin-bottom: 0.2rem;
-    }
+    }}
 
-    /* Compact toolbar buttons */
-    div[data-testid="column"] div.stButton > button {
-        border-radius: 6px;
+    div[data-testid="column"] div.stButton > button {{
+        border-radius: 8px;
         font-weight: 600;
         font-size: 0.8rem;
-        padding-top: 0.25rem;
-        padding-bottom: 0.25rem;
+        padding-top: 0.3rem;
+        padding-bottom: 0.3rem;
         min-height: 2rem;
-        border: 1px solid #cbd5e1;
-        background: #ffffff;
-        color: #0f172a;
-    }
-    div.stButton > button[kind="primary"] {
-        background: #1e293b;
+        border: 1px solid {card_border};
+        background: {btn_bg};
+        color: {btn_fg};
+    }}
+    div.stButton > button[kind="primary"] {{
+        background: {accent};
         color: #ffffff;
-        border: 1px solid #1e293b;
-    }
+        border: 1px solid {accent};
+    }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -163,32 +247,6 @@ AGENTS.update(FEATURE_AGENTS)
 AGENT_DESCRIPTIONS.update(FEATURE_DESCRIPTIONS)
 TASKS.update(FEATURE_TASKS)
 
-# ============================================================
-# SESSION STATE
-# ============================================================
-defaults = {
-    "cv_text": "",
-    "job_description": "",
-    "career_request": "",
-    "selected_agent": "Job Analyst",
-    "result": "",
-    "result_agent": "",
-    "last_run_time": None,
-    "insight_archive": [],
-    "active_insight_id": None,
-    "briefing_open": False,
-    "chat_messages": [],
-    "left_open": True,
-    "right_open": True,
-    # run lifecycle (never leave "running" stuck without escape)
-    "run_status": "idle",       # idle | running | success | error
-    "run_error": "",
-    "run_started_at": None,
-}
-for k, v in defaults.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
-
 
 def reset_everything():
     st.session_state.cv_text = ""
@@ -207,7 +265,6 @@ def reset_everything():
 
 
 def clear_run_state():
-    """Unstick UI after hang / disconnect / failed run."""
     st.session_state.run_status = "idle"
     st.session_state.run_error = ""
     st.session_state.run_started_at = None
@@ -378,7 +435,6 @@ def render_modular_result(agent_name, text):
             st.markdown(text)
 
 
-# Auto-clear a stuck "running" flag older than 10 minutes
 if st.session_state.run_status == "running" and st.session_state.run_started_at:
     try:
         started = datetime.strptime(
@@ -395,7 +451,7 @@ if st.session_state.run_status == "running" and st.session_state.run_started_at:
         clear_run_state()
 
 # ============================================================
-# LAYOUT: only left panel | center | right panel (NO rails)
+# LAYOUT: Settings | Center | Analysis
 # ============================================================
 left_open = st.session_state.left_open
 right_open = st.session_state.right_open
@@ -425,7 +481,7 @@ selected_agent = st.session_state.selected_agent
 run_busy = st.session_state.run_status == "running"
 
 # ============================================================
-# LEFT PANEL
+# LEFT = SETTINGS
 # ============================================================
 if left_panel is not None:
     with left_panel:
@@ -433,15 +489,34 @@ if left_panel is not None:
 
         h1, h2 = st.columns([5, 1])
         with h1:
-            st.markdown(
-                '<div class="co-section-label">Workspace</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown("### Settings")
         with h2:
-            if st.button("×", key="close_left", help="Hide workspace"):
+            if st.button("×", key="close_left", help="Hide Settings"):
                 st.session_state.left_open = False
                 st.rerun()
 
+        st.markdown(
+            '<div class="co-section-label">Appearance</div>',
+            unsafe_allow_html=True,
+        )
+        theme_choice = st.radio(
+            "Theme",
+            options=["Light", "Dark", "Soft"],
+            index=["Light", "Dark", "Soft"].index(
+                st.session_state.ui_theme
+                if st.session_state.ui_theme in ("Light", "Dark", "Soft")
+                else "Light"
+            ),
+            horizontal=True,
+            label_visibility="collapsed",
+            key="theme_radio",
+        )
+        if theme_choice != st.session_state.ui_theme:
+            st.session_state.ui_theme = theme_choice
+            st.rerun()
+        st.caption("Theme applies to this workspace.")
+
+        st.markdown("---")
         MODEL_READY = render_model_selector(AGENTS, container=left_panel)
 
         st.markdown(
@@ -471,7 +546,7 @@ else:
             MODEL_READY = False
 
 # ============================================================
-# RIGHT PANEL
+# RIGHT = ANALYSIS
 # ============================================================
 if right_panel is not None:
     with right_panel:
@@ -479,12 +554,9 @@ if right_panel is not None:
 
         h1, h2 = st.columns([5, 1])
         with h1:
-            st.markdown(
-                '<div class="co-section-label">Analysis</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown("### Analysis")
         with h2:
-            if st.button("×", key="close_right", help="Hide analysis panel"):
+            if st.button("×", key="close_right", help="Hide Analysis"):
                 st.session_state.right_open = False
                 st.rerun()
 
@@ -602,43 +674,43 @@ else:
 with center:
     st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
 
-    # Compact toolbar (replaces rails)
-    t1, t2, t3, t4 = st.columns([1.2, 1.2, 3, 1.4])
-    with t1:
-        label_l = "Hide model" if left_open else "Show model"
-        if st.button(label_l, key="tog_left", use_container_width=True):
-            st.session_state.left_open = not st.session_state.left_open
-            st.rerun()
-    with t2:
-        label_r = "Hide analysis" if right_open else "Show analysis"
-        if st.button(label_r, key="tog_right", use_container_width=True):
-            st.session_state.right_open = not st.session_state.right_open
-            st.rerun()
-    with t3:
-        st.caption(
-            f"Agent: **{selected_agent}**"
-            + (" · run active" if run_busy else "")
-        )
-    with t4:
-        if st.session_state.run_status in ("running", "error"):
-            if st.button("Clear status", key="clear_run", use_container_width=True):
-                clear_run_state()
-                st.rerun()
-
+    # Professional hero
     st.markdown(
-        """
-        <div class="co-card-dark">
+        f"""
+        <div class="co-hero">
             <div class="co-kicker">CareerOps AI</div>
-            <div style="font-size:1.3rem;font-weight:700;margin:0.1rem 0 0 0;">
-                Career operations workspace
-            </div>
-            <div style="color:#cbd5e1;font-size:0.86rem;margin-top:0.15rem;">
-                Toggle panels above. Add CV and job, then use the Run tab.
-            </div>
+            <div class="co-hero-title">Career operations workspace</div>
+            <p class="co-hero-sub">
+                Use <strong>Settings</strong> for model and theme.
+                Use <strong>Analysis</strong> for agent, archive, and briefing.
+            </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    # Panel controls inside the heading section
+    c1, c2, c3, c4 = st.columns([1.25, 1.25, 1.15, 2.4])
+    with c1:
+        label_l = "Hide Settings" if left_open else "Show Settings"
+        if st.button(label_l, key="tog_left", use_container_width=True):
+            st.session_state.left_open = not st.session_state.left_open
+            st.rerun()
+    with c2:
+        label_r = "Hide Analysis" if right_open else "Show Analysis"
+        if st.button(label_r, key="tog_right", use_container_width=True):
+            st.session_state.right_open = not st.session_state.right_open
+            st.rerun()
+    with c3:
+        if st.session_state.run_status in ("running", "error"):
+            if st.button("Clear status", key="clear_run", use_container_width=True):
+                clear_run_state()
+                st.rerun()
+    with c4:
+        st.caption(
+            f"Agent: **{selected_agent}**"
+            + (" · run active" if run_busy else "")
+        )
 
     st.markdown(
         f'<span class="co-agent-pill">{selected_agent}</span>',
@@ -646,7 +718,6 @@ with center:
     )
     st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
 
-    # ---------- Run status (replaces stuck lock banner) ----------
     if st.session_state.run_status == "running":
         st.info(
             f"Running **{st.session_state.selected_agent}**… "
@@ -747,7 +818,7 @@ with center:
                 st.session_state.run_status = "error"
                 st.session_state.run_error = (
                     "Selected model is not available. "
-                    "Open Show model and configure a valid API key."
+                    "Open Settings and configure a valid API key."
                 )
                 st.rerun()
             else:
@@ -796,7 +867,6 @@ with center:
                             st.session_state.run_error = str(error)
                     finally:
                         st.session_state.run_started_at = None
-                        # leave status as success or error; never leave "running"
                         if st.session_state.run_status == "running":
                             st.session_state.run_status = "error"
                             st.session_state.run_error = (
@@ -804,7 +874,6 @@ with center:
                             )
                         st.rerun()
 
-    # Insight display
     active = get_active_insight()
     display_text = st.session_state.result
     display_agent = st.session_state.result_agent
