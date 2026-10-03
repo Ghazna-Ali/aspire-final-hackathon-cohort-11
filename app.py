@@ -668,18 +668,18 @@ with center:
             st.session_state.left_open = not st.session_state.left_open
             st.rerun()
     with c2:
-    label_r = "Hide Analysis" if right_open else "Show Analysis"
+        label_r = "Hide Analysis" if right_open else "Show Analysis"
 
-    left_space, button_area, right_space = st.columns([0.2, 1, 0.2])
+        left_space, button_area, right_space = st.columns([0.2, 1, 0.2])
 
-    with button_area:
-        if st.button(
-            label_r,
-            key="tog_right",
-            use_container_width=True
-        ):
-            st.session_state.right_open = not st.session_state.right_open
-            st.rerun()
+        with button_area:
+            if st.button(
+                label_r,
+                key="tog_right",
+                use_container_width=True
+            ):
+                st.session_state.right_open = not st.session_state.right_open
+                st.rerun()
     with c3:
         if st.session_state.run_status in ("running", "error"):
             if st.button("Clear status", key="clear_run", use_container_width=True):
