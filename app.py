@@ -1246,10 +1246,13 @@ else:
 
 with center:
 
-    components.html(
+    # ========================================================
+    # CAREER HERO
+    # ========================================================
+
+    st.markdown(
         """
-        <style>
-        .career-hero {
+        <div style="
             background: linear-gradient(
                 135deg,
                 #0f172a 0%,
@@ -1258,60 +1261,50 @@ with center:
             );
             border: 1px solid rgba(129, 140, 248, 0.35);
             border-radius: 16px;
-            padding: 28px 30px;
+            padding: 24px 28px;
+            margin-bottom: 16px;
             box-shadow:
                 0 10px 40px rgba(0, 0, 0, 0.35),
                 0 0 0 1px rgba(129, 140, 248, 0.08);
-            font-family: sans-serif;
-        }
-
-        .career-kicker {
-            font-size: 12px;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: #a5b4fc;
-            font-weight: 700;
-            margin-bottom: 6px;
-        }
-
-        .career-title {
-            font-size: 30px;
-            font-weight: 800;
-            color: #f8fafc;
-            margin: 0;
-            line-height: 1.2;
-        }
-
-        .career-sub {
-            color: #cbd5e1;
-            font-size: 15px;
-            margin-top: 10px;
-            line-height: 1.5;
-        }
-
-        .career-sub strong {
-            color: #e0e7ff;
-        }
-        </style>
-
-        <div class="career-hero">
-            <div class="career-kicker">
+        ">
+            <div style="
+                font-size: 12px;
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+                color: #a5b4fc;
+                font-weight: 700;
+                margin-bottom: 6px;
+            ">
                 CareerOps AI
             </div>
 
-            <div class="career-title">
+            <div style="
+                font-size: 30px;
+                font-weight: 800;
+                color: #f8fafc;
+                line-height: 1.2;
+                margin-bottom: 10px;
+            ">
                 Career Assistant AI
             </div>
 
-            <div class="career-sub">
-                Configure the model in <strong>Settings</strong>.
+            <div style="
+                color: #cbd5e1;
+                font-size: 15px;
+                line-height: 1.5;
+            ">
+                Configure the model in
+                <strong style="color: #e0e7ff;">
+                    Settings
+                </strong>.
                 Choose an agent and review past results in
-                <strong>Analysis</strong>.
+                <strong style="color: #e0e7ff;">
+                    Analysis
+                </strong>.
             </div>
         </div>
         """,
-        height=170,
-        scrolling=False,
+        unsafe_allow_html=True,
     )
     
     # ========================================================
