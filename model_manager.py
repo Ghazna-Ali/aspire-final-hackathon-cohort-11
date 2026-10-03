@@ -1,4 +1,3 @@
-
 """
 Gemini-only LLM manager for CareerOps AI.
 """
@@ -11,18 +10,26 @@ from typing import Dict, Optional, Tuple
 import streamlit as st
 from crewai import LLM
 
+
 PLACEHOLDER_VALUES = {
-    "", "paste your api key here", "paste_your_api_key_here",
-    "your_api_key_here", "your-api-key-here", "changeme",
-    "change_me", "null", "none",
+    "",
+    "paste your api key here",
+    "paste_your_api_key_here",
+    "your_api_key_here",
+    "your-api-key-here",
+    "changeme",
+    "change_me",
+    "null",
+    "none",
 }
+
 
 KEY_RULES = {
     "GEMINI_API_KEY": {
         "min_len": 20,
         "max_len": 200,
         "prefixes": None,
-        "hint": "Get your key from https://aistudio.google.com/apikey",
+        "hint": "Get your key from https://aistudio.google.com/apikey.",
     },
 }
 
@@ -64,6 +71,7 @@ MODEL_CATALOG: Dict[str, ModelSpec] = {
         "Free tier",
     ),
 }
+
 
 DEFAULT_MODEL_PRIORITY = [
     "gemini_3_8_flash",
@@ -107,55 +115,62 @@ def validate_api_key(
         value = get_api_key(secret_key)
 
     if not value:
-        return False, (
-            f"{secret_key} is missing. "
-            "Add it in Streamlit Secrets."
+        return (
+            False,
+            f"{secret_key} is missing. Add it in Streamlit Secrets.",
         )
 
     rules = KEY_RULES.get(secret_key)
 
     if not rules:
         if len(value) < 10:
-            return False, (
-                f"{secret_key} looks too short "
-                f"({len(value)} chars)."
+            return (
+                False,
+                f"{secret_key} looks too short ({len(value)} chars).",
             )
-        return True, (
-            f"{secret_key} looks present "
-            f"({len(value)} chars)."
+
+        return (
+            True,
+            f"{secret_key} looks present ({len(value)} chars).",
         )
 
     length = len(value)
 
     if length < rules["min_len"] or length > rules["max_len"]:
-        return False, (
-            f"{secret_key} length looks wrong "
-            f"({length} chars). "
-            f"Expected about {rules['min_len']}–"
-            f"{rules['max_len']}. {rules['hint']}"
+        return (
+            False,
+            f"{secret_key} length looks wrong ({length} chars). "
+            f"Expected about {rules['min_len']}–{rules['max_len']}. "
+            f"{rules['hint']}",
         )
 
     prefixes = rules.get("prefixes")
 
     if prefixes and not any(
-        value.startswith(p) for p in prefixes
+        value.startswith(prefix)
+        for prefix in prefixes
     ):
         expected = " or ".join(
-            f"'{p}'" for p in prefixes
+            f"'{prefix}'"
+            for prefix in prefixes
         )
-        return False, (
+
+        return (
+            False,
             f"{secret_key} should start with {expected}. "
-            f"{rules['hint']}"
+            f"{rules['hint']}",
         )
 
     if not re.match(r"^[\x21-\x7E]+$", value):
-        return False, (
+        return (
+            False,
             f"{secret_key} contains unexpected characters. "
-            f"{rules['hint']}"
+            f"{rules['hint']}",
         )
 
-    return True, (
-        f"{secret_key} format looks OK ({length} chars)."
+    return (
+        True,
+        f"{secret_key} format looks OK ({length} chars).",
     )
 
 
@@ -172,7 +187,7 @@ def is_model_available(model_key: str) -> bool:
 
 def default_model_key() -> str:
     for key in DEFAULT_MODEL_PRIORITY:
-        if is_model_available(key):
+        if key in MODEL_CATALOG and is_model_available(key):
             return key
 
     return DEFAULT_MODEL_PRIORITY[0]
@@ -184,18 +199,20 @@ def model_label(model_key: str) -> str:
     if is_model_available(model_key):
         return f"🟢 {spec.display_name} • {spec.tier}"
 
-    return (
-        f"⚪ {spec.display_name} • "
-        "API key missing/invalid"
-    )
+    return f"⚪ {spec.display_name} • API key missing/invalid"
 
 
 def build_llm(model_key: str) -> LLM:
     if model_key not in MODEL_CATALOG:
-        raise ValueError(f"Unknown model: {model_key}")
+        raise ValueError(
+            f"Unknown model: {model_key}"
+        )
 
     spec = MODEL_CATALOG[model_key]
-    api_key = get_api_key(spec.secret_key)
+
+    api_key = get_api_key(
+        spec.secret_key
+    )
 
     ok, message = validate_api_key(
         spec.secret_key,
@@ -216,11 +233,15 @@ def configure_agents(
     agents: Dict[str, object],
     model_key: str,
 ) -> None:
+
     llm = build_llm(model_key)
 
     for agent in agents.values():
         agent.llm = llm
 
 
-def selected_model_info(model_key: str) -> ModelSpec:
+def selected_model_info(
+    model_key: str,
+) -> ModelSpec:
+
     return MODEL_CATALOG[model_key]
