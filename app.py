@@ -1180,7 +1180,7 @@ with center:
     )
 
     st.markdown(
-        """
+        
         <div class="co-hero">
 
             <div class="co-kicker">
@@ -1199,7 +1199,7 @@ with center:
             </p>
 
         </div>
-        """,
+        ,
         unsafe_allow_html=True,
     )
 
