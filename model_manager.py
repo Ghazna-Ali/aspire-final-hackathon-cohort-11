@@ -1,9 +1,12 @@
 """
 Free-tier multi-provider LLM manager for CareerOps AI (Oct 2026).
 
-- Only free-tier models
-- API key presence + basic format/length checks
-- Default model prefers the first available Gemini, then Groq, etc.
+Only providers with a real no-card free tier:
+  - Google Gemini
+  - Groq
+  - Cerebras
+
+OpenRouter and Mistral removed (limited / effectively paid for real use).
 """
 import os
 import re
@@ -28,33 +31,32 @@ PLACEHOLDER_VALUES = {
 
 
 # ------------------------------------------------------------
-# KEY FORMAT RULES (length + optional prefix)
-# These are soft checks — they catch common mistakes, not every invalid key.
+# KEY FORMAT RULES (soft checks)
 # ------------------------------------------------------------
 KEY_RULES = {
     "GEMINI_API_KEY": {
-        "min_len": 30,
-        "max_len": 60,
-        "prefix": "AIza",          # Google API keys usually start with AIza
-        "hint": "Google keys usually start with 'AIza' and are about 39 characters.",
+        "min_len": 20,
+        "max_len": 200,
+        "prefixes": None,  # AIza..., AQ...., etc.
+        "hint": (
+            "Paste the full key from https://aistudio.google.com/apikey. "
+            "Usually 20+ characters (AIza, AQ., or similar)."
+        ),
     },
     "GROQ_API_KEY": {
         "min_len": 40,
         "max_len": 120,
-        "prefix": "gsk_",          # Groq keys start with gsk_
-        "hint": "Groq keys usually start with 'gsk_' and are longer than 40 characters.",
+        "prefixes": ["gsk_"],
+        "hint": "Groq keys start with 'gsk_'. Get one at https://console.groq.com/keys",
     },
-    "OPENROUTER_API_KEY": {
-        "min_len": 40,
-        "max_len": 200,
-        "prefix": "sk-or-",        # OpenRouter keys start with sk-or-
-        "hint": "OpenRouter keys usually start with 'sk-or-' and are long tokens.",
-    },
-    "MISTRAL_API_KEY": {
+    "CEREBRAS_API_KEY": {
         "min_len": 20,
-        "max_len": 80,
-        "prefix": None,            # format varies
-        "hint": "Mistral keys are typically 32+ characters. Check console.mistral.ai.",
+        "max_len": 200,
+        "prefixes": ["csk-"],  # Cerebras keys often start with csk-
+        "hint": (
+            "Cerebras keys often start with 'csk-'. "
+            "Get one at https://cloud.cerebras.ai"
+        ),
     },
 }
 
@@ -99,7 +101,7 @@ MODEL_CATALOG: Dict[str, ModelSpec] = {
         tier="Free tier",
         notes="Still free for many projects. Native CrewAI.",
     ),
-    # ---------- Groq ----------
+    # ---------- Groq (free developer tier, needs litellm) ----------
     "groq_gpt_oss_120b": ModelSpec(
         provider="groq",
         display_name="Groq GPT-OSS 120B",
@@ -124,43 +126,25 @@ MODEL_CATALOG: Dict[str, ModelSpec] = {
         tier="Free tier",
         notes="Strong open model on Groq free tier.",
     ),
-    # ---------- OpenRouter free ----------
-    "openrouter_qwen_3_8_27b": ModelSpec(
-        provider="openrouter",
-        display_name="OpenRouter Qwen3.8 27B (free)",
-        model_id="openrouter/qwen/qwen3.8-27b:free",
-        secret_key="OPENROUTER_API_KEY",
+    # ---------- Cerebras (free tier, needs litellm) ----------
+    "cerebras_llama_3_3_70b": ModelSpec(
+        provider="cerebras",
+        display_name="Cerebras Llama 3.3 70B",
+        model_id="cerebras/llama-3.3-70b",
+        secret_key="CEREBRAS_API_KEY",
         tier="Free tier",
-        notes=":free route. Daily request limits apply.",
+        notes="Fast inference on Cerebras free tier. https://cloud.cerebras.ai",
     ),
-    "openrouter_gemma_4_31b": ModelSpec(
-        provider="openrouter",
-        display_name="OpenRouter Gemma 4 31B (free)",
-        model_id="openrouter/google/gemma-4-31b-it:free",
-        secret_key="OPENROUTER_API_KEY",
+    "cerebras_llama_3_1_8b": ModelSpec(
+        provider="cerebras",
+        display_name="Cerebras Llama 3.1 8B",
+        model_id="cerebras/llama3.1-8b",
+        secret_key="CEREBRAS_API_KEY",
         tier="Free tier",
-        notes="Strong free open model via OpenRouter.",
-    ),
-    "openrouter_nemotron_3_super": ModelSpec(
-        provider="openrouter",
-        display_name="OpenRouter Nemotron 3 Super (free)",
-        model_id="openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-        secret_key="OPENROUTER_API_KEY",
-        tier="Free tier",
-        notes="NVIDIA open MoE model, free on OpenRouter.",
-    ),
-    # ---------- Mistral ----------
-    "mistral_small": ModelSpec(
-        provider="mistral",
-        display_name="Mistral Small (free)",
-        model_id="mistral/mistral-small-latest",
-        secret_key="MISTRAL_API_KEY",
-        tier="Free Experiment",
-        notes="Mistral Experiment plan. Rate-limited.",
+        notes="Smaller/faster Cerebras free-tier model.",
     ),
 }
 
-# Preferred default order when multiple keys are valid
 DEFAULT_MODEL_PRIORITY = [
     "gemini_3_8_flash",
     "gemini_3_5_flash_lite",
@@ -168,9 +152,8 @@ DEFAULT_MODEL_PRIORITY = [
     "groq_gpt_oss_120b",
     "groq_gpt_oss_20b",
     "groq_qwen_3_8_27b",
-    "openrouter_qwen_3_8_27b",
-    "openrouter_gemma_4_31b",
-    "mistral_small",
+    "cerebras_llama_3_3_70b",
+    "cerebras_llama_3_1_8b",
 ]
 
 
@@ -195,11 +178,6 @@ def get_api_key(secret_key: str) -> Optional[str]:
 
 
 def validate_api_key(secret_key: str, value: Optional[str] = None) -> Tuple[bool, str]:
-    """
-    Check that a key exists and roughly matches expected length/prefix.
-
-    Returns (is_valid, message).
-    """
     if value is None:
         value = get_api_key(secret_key)
 
@@ -208,7 +186,6 @@ def validate_api_key(secret_key: str, value: Optional[str] = None) -> Tuple[bool
 
     rules = KEY_RULES.get(secret_key)
     if not rules:
-        # Unknown key type — only require non-empty
         if len(value) < 10:
             return False, f"{secret_key} looks too short ({len(value)} chars)."
         return True, f"{secret_key} looks present ({len(value)} chars)."
@@ -216,7 +193,7 @@ def validate_api_key(secret_key: str, value: Optional[str] = None) -> Tuple[bool
     length = len(value)
     min_len = rules["min_len"]
     max_len = rules["max_len"]
-    prefix = rules.get("prefix")
+    prefixes = rules.get("prefixes")
     hint = rules.get("hint", "")
 
     if length < min_len or length > max_len:
@@ -226,14 +203,21 @@ def validate_api_key(secret_key: str, value: Optional[str] = None) -> Tuple[bool
             f"Expected about {min_len}–{max_len}. {hint}",
         )
 
-    if prefix and not value.startswith(prefix):
-        return (
-            False,
-            f"{secret_key} should start with '{prefix}' but starts with "
-            f"'{value[: min(8, length)]}...'. {hint}",
-        )
+    if prefixes:
+        if not any(value.startswith(p) for p in prefixes):
+            # Soft warning only for Cerebras — prefix can vary by account
+            if secret_key == "CEREBRAS_API_KEY":
+                return True, (
+                    f"{secret_key} format looks OK ({length} chars). "
+                    f"(Prefix is not 'csk-' but key is long enough.)"
+                )
+            expected = " or ".join(f"'{p}'" for p in prefixes)
+            return (
+                False,
+                f"{secret_key} should start with {expected} but starts with "
+                f"'{value[: min(12, length)]}...'. {hint}",
+            )
 
-    # Extra soft check: mostly printable ASCII
     if not re.match(r"^[\x21-\x7E]+$", value):
         return False, f"{secret_key} contains unexpected characters. {hint}"
 
@@ -241,7 +225,6 @@ def validate_api_key(secret_key: str, value: Optional[str] = None) -> Tuple[bool
 
 
 def is_model_available(model_key: str) -> bool:
-    """True only if the key is present AND passes format/length checks."""
     if model_key not in MODEL_CATALOG:
         return False
     spec = MODEL_CATALOG[model_key]
@@ -250,11 +233,10 @@ def is_model_available(model_key: str) -> bool:
 
 
 def get_key_status_message(model_key: str) -> str:
-    """Human-readable status for the selected model’s key."""
     if model_key not in MODEL_CATALOG:
         return "Unknown model."
     spec = MODEL_CATALOG[model_key]
-    ok, message = validate_api_key(spec.secret_key)
+    _, message = validate_api_key(spec.secret_key)
     return message
 
 
@@ -267,14 +249,9 @@ def unavailable_model_keys():
 
 
 def default_model_key() -> str:
-    """
-    Prefer the first model whose key is valid, following DEFAULT_MODEL_PRIORITY.
-    Falls back to the first catalog entry if none are ready.
-    """
     for key in DEFAULT_MODEL_PRIORITY:
         if key in MODEL_CATALOG and is_model_available(key):
             return key
-    # Fallback: first catalog key (UI will show it as missing key)
     return next(iter(MODEL_CATALOG.keys()))
 
 
@@ -296,15 +273,11 @@ def build_llm(model_key: str) -> LLM:
     if not ok:
         raise ValueError(message)
 
-    kwargs = {
-        "model": spec.crewai_model,
-        "api_key": api_key,
-        "temperature": 0.2,
-    }
-    if spec.provider == "openrouter":
-        kwargs["base_url"] = "https://openrouter.ai/api/v1"
-
-    return LLM(**kwargs)
+    return LLM(
+        model=spec.crewai_model,
+        api_key=api_key,
+        temperature=0.2,
+    )
 
 
 def get_model_status_rows():
