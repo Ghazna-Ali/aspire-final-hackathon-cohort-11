@@ -1225,76 +1225,72 @@ else:
 # ============================================================
 
 with center:
+    st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
 
-    st.markdown(
-        """
-        <style>
-        .career-hero {
-            background: linear-gradient(
-                135deg,
-                #0f172a 0%,
-                #1e293b 45%,
-                #312e81 100%
-            );
-            border: 1px solid rgba(129, 140, 248, 0.35);
-            border-radius: 16px;
-            padding: 28px 30px;
-            margin-bottom: 14px;
-            box-shadow:
-                0 10px 40px rgba(0, 0, 0, 0.35),
-                0 0 0 1px rgba(129, 140, 248, 0.08);
-        }
+    # Career Assistant Hero
+    hero_html = """
+    <style>
+    .career-hero {
+        background: linear-gradient(
+            135deg,
+            #0f172a 0%,
+            #1e293b 45%,
+            #312e81 100%
+        );
+        border: 1px solid rgba(129, 140, 248, 0.35);
+        border-radius: 16px;
+        padding: 28px 30px;
+        margin-bottom: 14px;
+        box-shadow:
+            0 10px 40px rgba(0, 0, 0, 0.35),
+            0 0 0 1px rgba(129, 140, 248, 0.08);
+    }
 
-        .career-hero-kicker {
-            font-size: 12px;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: #a5b4fc;
-            font-weight: 700;
-            margin-bottom: 6px;
-        }
+    .career-hero-kicker {
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #a5b4fc;
+        font-weight: 700;
+        margin-bottom: 6px;
+    }
 
-        .career-hero-title {
-            font-size: 30px;
-            font-weight: 800;
-            color: #f8fafc;
-            margin: 0;
-            line-height: 1.2;
-            letter-spacing: -0.03em;
-        }
+    .career-hero-title {
+        font-size: 30px;
+        font-weight: 800;
+        color: #f8fafc;
+        margin: 0;
+        line-height: 1.2;
+    }
 
-        .career-hero-sub {
-            color: #cbd5e1;
-            font-size: 15px;
-            margin-top: 8px;
-            line-height: 1.5;
-            max-width: 40rem;
-        }
+    .career-hero-sub {
+        color: #cbd5e1;
+        font-size: 15px;
+        margin-top: 8px;
+        line-height: 1.5;
+    }
 
-        .career-hero-sub strong {
-            color: #e0e7ff;
-            font-weight: 600;
-        }
-        </style>
+    .career-hero-sub strong {
+        color: #e0e7ff;
+    }
+    </style>
 
-        <div class="career-hero">
-            <div class="career-hero-kicker">
-                CareerOps AI
-            </div>
+    <div class="career-hero">
+        <div class="career-hero-kicker">CareerOps AI</div>
 
-            <div class="career-hero-title">
-                Career Assistant AI
-            </div>
-
-            <div class="career-hero-sub">
-                Configure the model in <strong>Settings</strong>.
-                Choose an agent and review past results in
-                <strong>Analysis</strong>.
-            </div>
+        <div class="career-hero-title">
+            Career Assistant AI
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+
+        <div class="career-hero-sub">
+            Configure the model in <strong>Settings</strong>.
+            Choose an agent and review past results in
+            <strong>Analysis</strong>.
+        </div>
+    </div>
+    """
+
+    st.markdown(hero_html, unsafe_allow_html=True)
     
     # ========================================================
     # TOP CONTROLS
