@@ -1225,72 +1225,37 @@ else:
 # ============================================================
 
 with center:
-    st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
 
-    # Career Assistant Hero
-    hero_html = """
-    <style>
-    .career-hero {
-        background: linear-gradient(
-            135deg,
-            #0f172a 0%,
-            #1e293b 45%,
-            #312e81 100%
-        );
-        border: 1px solid rgba(129, 140, 248, 0.35);
-        border-radius: 16px;
-        padding: 28px 30px;
-        margin-bottom: 14px;
-        box-shadow:
-            0 10px 40px rgba(0, 0, 0, 0.35),
-            0 0 0 1px rgba(129, 140, 248, 0.08);
-    }
+    # Open hero container
+    st.markdown(
+        """
+        <div class="co-hero">
+        """,
+        unsafe_allow_html=True,
+    )
 
-    .career-hero-kicker {
-        font-size: 12px;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        color: #a5b4fc;
-        font-weight: 700;
-        margin-bottom: 6px;
-    }
+    # Hero content
+    st.markdown(
+        "CareerOps AI",
+        help="CareerOps AI",
+    )
 
-    .career-hero-title {
-        font-size: 30px;
-        font-weight: 800;
-        color: #f8fafc;
-        margin: 0;
-        line-height: 1.2;
-    }
+    st.markdown(
+        "## Career Assistant AI"
+    )
 
-    .career-hero-sub {
-        color: #cbd5e1;
-        font-size: 15px;
-        margin-top: 8px;
-        line-height: 1.5;
-    }
+    st.markdown(
+        "Configure the model in **Settings**. "
+        "Choose an agent and review past results in **Analysis**."
+    )
 
-    .career-hero-sub strong {
-        color: #e0e7ff;
-    }
-    </style>
-
-    <div class="career-hero">
-        <div class="career-hero-kicker">CareerOps AI</div>
-
-        <div class="career-hero-title">
-            Career Assistant AI
+    # Close hero container
+    st.markdown(
+        """
         </div>
-
-        <div class="career-hero-sub">
-            Configure the model in <strong>Settings</strong>.
-            Choose an agent and review past results in
-            <strong>Analysis</strong>.
-        </div>
-    </div>
-    """
-
-    st.markdown(hero_html, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
     
     # ========================================================
     # TOP CONTROLS
