@@ -4,3 +4,4 @@ crewai-tools
 pypdf
 requests
 beautifulsoup4
+reportlab
