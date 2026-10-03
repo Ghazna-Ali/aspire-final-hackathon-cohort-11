@@ -661,37 +661,33 @@ with center:
         unsafe_allow_html=True,
     )
 
-    c1, c2, c3 = st.columns([1.25, 1.15, 3.6])
+    c1, c2, c3, c4 = st.columns([1.25, 1.25, 1.15, 2.4])
     with c1:
         label_l = "Hide Settings" if left_open else "Show Settings"
         if st.button(label_l, key="tog_left", use_container_width=True):
             st.session_state.left_open = not st.session_state.left_open
             st.rerun()
     with c2:
+        label_r = "Hide Analysis" if right_open else "Show Analysis"
+        if st.button(label_r, key="tog_right", use_container_width=True):
+            st.session_state.right_open = not st.session_state.right_open
+            st.rerun()
+    with c3:
         if st.session_state.run_status in ("running", "error"):
             if st.button("Clear status", key="clear_run", use_container_width=True):
                 clear_run_state()
                 st.rerun()
-    with c3:
+    with c4:
         st.caption(
             f"Agent: **{selected_agent}**"
             + (" · run active" if run_busy else "")
         )
 
-    # Agent pill + description on the left, Show/Hide Analysis on the right (same row)
-    agent_row, analysis_btn = st.columns([2.5, 1.5])
-    with agent_row:
-        st.markdown(
-            f'<span class="co-agent-pill">{selected_agent}</span>',
-            unsafe_allow_html=True,
-        )
-        st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
-    with analysis_btn:
-        label_r = "Hide Analysis" if right_open else "Show Analysis"
-        if st.button(label_r, key="tog_right", use_container_width=True):
-            st.session_state.right_open = not st.session_state.right_open
-            st.rerun()
-
+    st.markdown(
+        f'<span class="co-agent-pill">{selected_agent}</span>',
+        unsafe_allow_html=True,
+    )
+    st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
     if st.session_state.run_status == "running":
         st.info(
             f"Running **{st.session_state.selected_agent}**… "
