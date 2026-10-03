@@ -582,7 +582,7 @@ if cv_upload is not None:
 
             try:
 
-                extracted_text = extract_cv_text(
+                extracted_text = extract_cv_text.run(
                     temp_path
                 )
 
