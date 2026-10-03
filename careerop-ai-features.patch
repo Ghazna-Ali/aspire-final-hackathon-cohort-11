@@ -1,0 +1,513 @@
+diff --git a/README.md b/README.md
+index fec9c0f..4fc06b4 100644
+--- a/README.md
++++ b/README.md
+@@ -94,6 +94,23 @@ Users select the agent they want to use rather than being forced through a prede
+ | 🎤 **Interview Agent**   | Generates technical, behavioral, situational, and job-specific interview preparation                             |
+ | 🔎 **Critic Agent**      | Reviews application information and identifies weaknesses, missing evidence, gaps, and potential improvements    |
+ 
++### Career features
++
++These features are available in the same agent dropdown. Each one is powered by an existing agent.
++
++| Feature                        | Powered by           | What it does                                                                                                       |
++| ------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
++| 🎯 **Job Match Score**         | CV Analyst           | Compares the CV with the job description and returns a match percentage, a category breakdown, and reasons          |
++| 🧩 **Skill Gap Detector**      | CV Analyst           | Finds required job skills that are missing or weak in the CV, ranked by importance                                  |
++| ✉️ **Cover Letter Generation** | Application Agent    | Writes a customized cover letter from the CV and job description                                                    |
++| 🗺️ **Career Roadmap**          | Manager Agent        | Builds a phased learning and career roadmap from the candidate's skills, weaknesses, and target job                 |
++
++**Tips**
++
++* Mention the company, hiring manager, or preferred tone in the *Career Request* to personalize the cover letter.
++* Mention a timeframe and weekly study hours in the *Career Request* (for example "6 months, 10 hours per week") to shape the roadmap. The default is 90 days and 8 hours per week.
++* The Job Match Score shows a score meter above the report. The percentage is calculated from four weighted categories: Technical Skills 40%, Experience and Projects 30%, Education and Certifications 10%, Keywords and Soft Skills 20%.
++
+ ---
+ 
+ # 🧠 Agent Details
+@@ -474,6 +491,7 @@ Career-Assistant-AI/
+ ├── app.py
+ ├── agents.py
+ ├── tasks.py
++├── features.py
+ ├── tools.py
+ ├── memory.py
+ ├── requirements.txt
+@@ -524,6 +542,14 @@ Tasks help translate the user's request into structured AI work.
+ 
+ ---
+ 
++## `features.py`
++
++Contains the Job Match Score, Skill Gap Detector, Cover Letter Generation, and Career Roadmap features.
++
++Each feature adds a new task that reuses an existing agent from `agents.py`. `app.py` merges these into its agent, task, and description registries.
++
++---
++
+ ## `tools.py`
+ 
+ Contains supporting tools used by the application and agents.
+diff --git a/app.py b/app.py
+index 79a777d..6405a6d 100644
+--- a/app.py
++++ b/app.py
+@@ -20,6 +20,15 @@ from tasks import TASKS
+ from tools import extract_cv_text
+ from memory import CareerMemory
+ 
++# New features: Job Match Score, Skill Gap Detector,
++# Cover Letter Generation, Career Roadmap
++from features import (
++    FEATURE_AGENTS,
++    FEATURE_TASKS,
++    FEATURE_DESCRIPTIONS,
++    parse_match_score,
++)
++
+ 
+ # ============================================================
+ # PAGE CONFIGURATION
+@@ -125,6 +134,15 @@ AGENT_DESCRIPTIONS = {
+ }
+ 
+ 
++# ============================================================
++# NEW FEATURES (added to the existing registries)
++# ============================================================
++
++AGENTS.update(FEATURE_AGENTS)
++AGENT_DESCRIPTIONS.update(FEATURE_DESCRIPTIONS)
++TASKS.update(FEATURE_TASKS)
++
++
+ # ============================================================
+ # SESSION STATE
+ # ============================================================
+@@ -762,6 +780,37 @@ if st.session_state.result:
+             f"{st.session_state.last_run_time}"
+         )
+ 
++    # --------------------------------------------------------
++    # Match score meter (only for the Job Match Score feature)
++    # --------------------------------------------------------
++
++    if st.session_state.result_agent == "Job Match Score":
++
++        match_score = parse_match_score(
++            st.session_state.result
++        )
++
++        if match_score:
++
++            st.metric(
++                "Job Match Score",
++                f"{match_score['overall']}%",
++            )
++
++            st.progress(match_score["overall"] / 100)
++
++            if match_score["breakdown"]:
++
++                score_columns = st.columns(
++                    len(match_score["breakdown"])
++                )
++
++                for column, (category, value) in zip(
++                    score_columns,
++                    match_score["breakdown"].items(),
++                ):
++                    column.metric(category, f"{value}/100")
++
+     st.markdown(
+         '<div class="result-box">',
+         unsafe_allow_html=True,
+diff --git a/features.py b/features.py
+new file mode 100644
+index 0000000..7e5f948
+--- /dev/null
++++ b/features.py
+@@ -0,0 +1,382 @@
++"""
++Additional CareerOps AI features.
++
++Each feature reuses an EXISTING agent from agents.py and adds a new Task.
++Nothing in agents.py or tasks.py is modified. app.py merges the registries
++below into its own AGENTS / TASKS / AGENT_DESCRIPTIONS dictionaries.
++
++    Feature                   Agent used
++    ------------------------  -----------------
++    Job Match Score           CV Analyst
++    Skill Gap Detector        CV Analyst
++    Cover Letter Generation   Application Agent
++    Career Roadmap            Manager Agent
++"""
++
++import re
++
++from crewai import Task
++
++from agents import (
++    manager_agent,
++    cv_agent,
++    application_agent,
++)
++
++
++# ============================================================
++# 1. JOB MATCH SCORE  (CV Analyst)
++# ============================================================
++
++job_match_score_task = Task(
++    description="""
++Calculate how well the candidate matches the target job.
++
++CANDIDATE CV:
++{cv_text}
++
++JOB DESCRIPTION:
++{job_description}
++
++CAREER REQUEST:
++{career_request}
++
++Score each category from 0 to 100 using this rubric:
++- Technical Skills (weight 40%): share of the required and preferred
++  technical skills and tools that the CV actually demonstrates.
++- Experience and Projects (weight 30%): relevance and level of the
++  candidate's work experience and projects compared with the role.
++- Education and Certifications (weight 10%): fit of degree, field,
++  and certifications.
++- Keywords and Soft Skills (weight 20%): coverage of the job's
++  important keywords and soft skills.
++
++Be strict and consistent. Missing evidence lowers the score.
++Never assume a skill that is not written in the CV.
++
++Calculate the overall score as:
++0.40 x Technical + 0.30 x Experience + 0.10 x Education + 0.20 x Keywords
++and round it to a whole number.
++
++Write the answer in Markdown using EXACTLY this structure:
++
++## Overall Match Score: <number>%
++
++**Verdict:** one sentence summarizing the fit.
++
++## Score Breakdown
++
++- **Technical Skills:** <number>/100 (weight 40%) - reason
++- **Experience and Projects:** <number>/100 (weight 30%) - reason
++- **Education and Certifications:** <number>/100 (weight 10%) - reason
++- **Keywords and Soft Skills:** <number>/100 (weight 20%) - reason
++
++## Why You Match
++Bullet points. Each one names a job requirement and the CV evidence for it.
++
++## Why the Score Is Not Higher
++Bullet points. Each one names a job requirement and what the CV lacks.
++
++## Fastest Ways to Raise Your Score
++3 to 5 specific, truthful actions.
++
++Do not invent qualifications, experience, projects, or achievements.
++If something is absent, write: Not found in the provided documents.
++""",
++    expected_output="""
++A Markdown report that starts with the overall match score as a
++percentage, followed by a four-category score breakdown, reasons for
++the match, reasons for missing points, and ways to improve the score.
++""",
++    agent=cv_agent,
++)
++
++
++# ============================================================
++# 2. SKILL GAP DETECTOR  (CV Analyst)
++# ============================================================
++
++skill_gap_task = Task(
++    description="""
++Identify the skills the job requires that are missing or weak in the CV.
++
++CANDIDATE CV:
++{cv_text}
++
++JOB DESCRIPTION:
++{job_description}
++
++CAREER REQUEST:
++{career_request}
++
++Go through every skill, tool, technology, qualification, and experience
++requirement in the job description and check it against the CV.
++
++Classify each gap as:
++- Missing: not found anywhere in the CV.
++- Weak: mentioned only briefly, or listed without a project or
++  experience that proves it.
++
++Rate each gap's importance:
++- Critical: stated as required or central to the role.
++- Important: stated as preferred or used often in the responsibilities.
++- Nice-to-have: minor or optional.
++
++Write the answer in Markdown using this structure:
++
++## Skill Gap Summary
++One short paragraph, plus the counts: critical gaps, important gaps,
++nice-to-have gaps.
++
++## Skill Gaps
++
++| Skill | Status | Importance | What the job asks | What the CV shows |
++| ----- | ------ | ---------- | ----------------- | ----------------- |
++
++List Critical gaps first, then Important, then Nice-to-have.
++For "What the CV shows" write: Not found in the provided documents.
++when the skill is completely absent.
++
++## Skills You Already Demonstrate
++Required skills the CV clearly supports, each with a short piece of
++evidence from the CV.
++
++## Quick Wins
++Gaps the candidate could close or show evidence for within a few days,
++using only experience they already have (for example by rewording or
++adding a detail they can truthfully claim).
++
++Do not invent skills, experience, or requirements.
++""",
++    expected_output="""
++A Markdown skill gap report with a summary, a table of missing and weak
++skills ranked by importance, skills the candidate already demonstrates,
++and quick wins.
++""",
++    agent=cv_agent,
++)
++
++
++# ============================================================
++# 3. COVER LETTER GENERATION  (Application Agent)
++# ============================================================
++
++cover_letter_task = Task(
++    description="""
++Write a customized cover letter for this candidate and job.
++
++CANDIDATE CV:
++{cv_text}
++
++JOB DESCRIPTION:
++{job_description}
++
++CAREER REQUEST:
++{career_request}
++
++Instructions:
++- Use the company name, hiring manager name, and preferred tone if they
++  appear in the career request or the job description. If they are not
++  given, use the greeting "Dear Hiring Team" and a professional, warm tone.
++- Use the candidate's real name from the CV for the sign-off. If the
++  name is not in the CV, sign off with [Your Name].
++- Length: 280 to 350 words in 3 to 4 short paragraphs.
++- Start with a specific opening tied to the role, not "I am writing to apply".
++- Include 2 or 3 real examples from the CV (projects, experience,
++  achievements) that match the job's main requirements.
++- If the candidate lacks a required skill, do NOT claim it. You may
++  briefly express motivation to learn it.
++- Do not invent experience, skills, achievements, employers, or numbers.
++
++Write the answer in Markdown using this structure:
++
++## Cover Letter
++
++(the complete letter, ready to copy and paste)
++
++## What This Letter Emphasizes
++3 to 5 bullets naming the job requirements the letter addresses and the
++CV evidence used.
++
++## Before You Send
++2 or 3 bullets for details the candidate should check or personalize
++(for example company name or a missing detail).
++""",
++    expected_output="""
++A complete, truthful, ready-to-send cover letter of about 300 words,
++followed by a short list of what it emphasizes and what to check
++before sending.
++""",
++    agent=application_agent,
++)
++
++
++# ============================================================
++# 4. CAREER ROADMAP  (Manager Agent)
++# ============================================================
++
++career_roadmap_task = Task(
++    description="""
++Create a practical learning and career roadmap for the candidate.
++
++CANDIDATE CV:
++{cv_text}
++
++TARGET JOB DESCRIPTION:
++{job_description}
++
++CAREER REQUEST:
++{career_request}
++
++First work out, from the CV and the job description only:
++- the candidate's current skills,
++- the candidate's weaknesses and skill gaps for this target job,
++- the target job title and its key requirements.
++
++Then build the roadmap.
++
++Timeframe and study time: use the timeframe and weekly hours stated in
++the career request. If they are not stated, assume 90 days and 8 hours
++per week.
++
++Write the answer in Markdown using this structure:
++
++## Where You Stand
++Two or three sentences about the current position against the target job.
++
++## Your Strengths
++Skills from the CV that already match the job.
++
++## Priority Skills to Build
++A ranked table: Skill | Why it matters for this job | Priority.
++Critical gaps first. Only include skills the job really needs.
++
++## Phase-by-Phase Plan
++Split the timeframe into 3 phases. For each phase give:
++- Focus skills
++- Weekly actions (realistic for the stated weekly hours)
++- One hands-on mini-project
++- A milestone that proves progress
++
++## Portfolio Projects
++One or two projects that would directly demonstrate the missing skills
++for this role.
++
++## Learning Resources
++Suggest types of resources and well-known official documentation or
++courses by name. Do NOT invent URLs.
++
++## Application Strategy
++When to start applying, and what to emphasize in the meantime.
++
++## Interview Preparation
++5 likely interview questions based on the job and the gaps.
++
++Never invent facts about the candidate. If something is absent from the
++CV, write: Not found in the provided documents.
++""",
++    expected_output="""
++A Markdown career roadmap with the candidate's current standing,
++prioritized skills to build, a three-phase plan with projects and
++milestones, portfolio ideas, learning resources, application strategy,
++and interview preparation.
++""",
++    agent=manager_agent,
++)
++
++
++# ============================================================
++# REGISTRIES (merged into app.py's AGENTS / TASKS / DESCRIPTIONS)
++# ============================================================
++
++FEATURE_AGENTS = {
++    "Job Match Score": cv_agent,
++    "Skill Gap Detector": cv_agent,
++    "Cover Letter Generation": application_agent,
++    "Career Roadmap": manager_agent,
++}
++
++FEATURE_TASKS = {
++    "Job Match Score": job_match_score_task,
++    "Skill Gap Detector": skill_gap_task,
++    "Cover Letter Generation": cover_letter_task,
++    "Career Roadmap": career_roadmap_task,
++}
++
++FEATURE_DESCRIPTIONS = {
++    "Job Match Score": (
++        "(CV Analyst) Get a match percentage between your CV and the "
++        "job, with a category breakdown and reasons."
++    ),
++    "Skill Gap Detector": (
++        "(CV Analyst) Find required job skills that are missing or "
++        "weak in your CV, ranked by importance."
++    ),
++    "Cover Letter Generation": (
++        "(Application Agent) Generate a customized cover letter based "
++        "on your CV and the job description."
++    ),
++    "Career Roadmap": (
++        "(Manager Agent) Get a learning and career roadmap built from "
++        "your skills, weaknesses, and target job. You can state a "
++        "timeframe and weekly study hours in the career request."
++    ),
++}
++
++
++# ============================================================
++# MATCH SCORE PARSING (used by app.py to show a score meter)
++# ============================================================
++
++_SCORE_WEIGHTS = {
++    "Technical Skills": 0.40,
++    "Experience and Projects": 0.30,
++    "Education and Certifications": 0.10,
++    "Keywords and Soft Skills": 0.20,
++}
++
++
++def _clamp(value, low=0, high=100):
++    return max(low, min(high, int(value)))
++
++
++def parse_match_score(text):
++    """
++    Read the score lines from a Job Match Score result.
++
++    Returns {"overall": int, "breakdown": {category: int}} or None if
++    nothing could be parsed. When all four category scores are present
++    the overall score is recalculated from them, so the number shown in
++    the UI always matches the stated weights.
++    """
++
++    if not text:
++        return None
++
++    breakdown = {}
++
++    for category in _SCORE_WEIGHTS:
++        match = re.search(
++            re.escape(category) + r"\W+(\d{1,3})\s*/\s*100",
++            text,
++            flags=re.IGNORECASE,
++        )
++        if match:
++            breakdown[category] = _clamp(match.group(1))
++
++    if len(breakdown) == len(_SCORE_WEIGHTS):
++        overall = round(
++            sum(breakdown[c] * w for c, w in _SCORE_WEIGHTS.items())
++        )
++        return {"overall": _clamp(overall), "breakdown": breakdown}
++
++    match = re.search(
++        r"Overall Match Score\W+(\d{1,3})",
++        text,
++        flags=re.IGNORECASE,
++    )
++
++    if match:
++        return {"overall": _clamp(match.group(1)), "breakdown": breakdown}
++
++    return None
