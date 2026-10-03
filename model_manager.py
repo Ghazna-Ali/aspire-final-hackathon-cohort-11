@@ -16,10 +16,16 @@ from crewai import LLM
 # ---------------------------------------------------------------------------
 # Message sanitizer
 #
-# Newer CrewAI / LiteLLM versions can attach a `cache_breakpoint` field to
-# messages (used for prompt caching). Gemini tolerates it, but Groq rejects it:
+# CrewAI marks messages with a `cache_breakpoint` flag for prompt caching.
+# Its native providers strip the flag, but the LiteLLM path (used for Groq)
+# forwards it, and Groq rejects it:
 #   "'messages.0' : property 'cache_breakpoint' is unsupported"
-# We strip unsupported keys from every message right before the request is sent.
+#
+# We strip it at three levels so it is caught whichever path a given
+# crewai / litellm version takes:
+#   1. crewai  LLM._format_messages_for_provider  (where it should be stripped)
+#   2. litellm completion / acompletion           (entry points)
+#   3. litellm GroqChatConfig.transform_request   (last step before the HTTP call)
 # ---------------------------------------------------------------------------
 _UNSUPPORTED_MSG_KEYS = {"cache_breakpoint"}
 
@@ -37,6 +43,7 @@ def _clean_content(content):
 
 
 def _clean_messages(messages):
+    """Return a copy of `messages` without unsupported keys (input untouched)."""
     if not isinstance(messages, list):
         return messages
     cleaned = []
@@ -50,10 +57,24 @@ def _clean_messages(messages):
 
 
 def _install_message_sanitizer() -> None:
-    # Streamlit reruns this module often; only wrap LiteLLM once.
+    # Streamlit reruns this module often; only wrap once.
     if getattr(litellm, "_msg_sanitizer_installed", False):
         return
 
+    # 1) CrewAI: clean messages when they are formatted for the provider.
+    try:
+        from crewai.llm import LLM as _CrewLLM
+
+        _orig_fmt = _CrewLLM._format_messages_for_provider
+
+        def _safe_fmt(self, messages, *args, **kwargs):
+            return _orig_fmt(self, _clean_messages(messages), *args, **kwargs)
+
+        _CrewLLM._format_messages_for_provider = _safe_fmt
+    except Exception:
+        pass
+
+    # 2) LiteLLM entry points.
     _orig_completion = litellm.completion
 
     def _safe_completion(*args, **kwargs):
@@ -72,6 +93,19 @@ def _install_message_sanitizer() -> None:
             return await _orig_acompletion(*args, **kwargs)
 
         litellm.acompletion = _safe_acompletion
+
+    # 3) Last step before the request body is built for Groq.
+    try:
+        from litellm.llms.groq.chat.transformation import GroqChatConfig
+
+        _orig_transform = GroqChatConfig.transform_request
+
+        def _safe_transform(self, model, messages, *args, **kwargs):
+            return _orig_transform(self, model, _clean_messages(messages), *args, **kwargs)
+
+        GroqChatConfig.transform_request = _safe_transform
+    except Exception:
+        pass
 
     litellm._msg_sanitizer_installed = True
 
