@@ -5,28 +5,6 @@ import tempfile
 import uuid
 from datetime import datetime
 
-# ============================================================
-# GROQ / CREWAI CACHE BREAKPOINT COMPATIBILITY FIX
-# ============================================================
-#
-# CrewAI can inject `cache_breakpoint` into messages.
-# Groq does NOT accept this property.
-#
-# This must execute BEFORE importing agents / creating
-# CrewAI LLM or Agent objects.
-#
-# This workaround is specifically for the CrewAI/LiteLLM
-# Groq cache_breakpoint compatibility issue.
-# ============================================================
-
-try:
-    import crewai.llms.cache as _crewai_cache
-
-    _crewai_cache.mark_cache_breakpoint = lambda msg: msg
-
-except Exception:
-    pass
-
 
 # ============================================================
 # IMPORTS
