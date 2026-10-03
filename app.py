@@ -55,16 +55,16 @@ st.markdown(
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
     .block-container {
-        padding-top: 0.85rem;
+        padding-top: 0.75rem;
         padding-bottom: 1.5rem;
-        max-width: 1600px;
+        max-width: 1400px;
     }
 
     .co-scroll {
-        max-height: calc(100vh - 5.5rem);
+        max-height: calc(100vh - 5rem);
         overflow-y: auto;
         overflow-x: hidden;
-        padding-right: 0.35rem;
+        padding-right: 0.3rem;
         scrollbar-width: thin;
         scrollbar-color: #94a3b8 transparent;
     }
@@ -74,28 +74,12 @@ st.markdown(
         border-radius: 999px;
     }
 
-    .co-rail {
-        background: #0f172a;
-        border-radius: 10px;
-        padding: 0.55rem 0.35rem;
-        text-align: center;
-        min-height: 200px;
-    }
-    .co-rail-label {
-        font-size: 0.65rem;
-        color: #94a3b8;
-        letter-spacing: 0.04em;
-        margin-top: 0.15rem;
-        line-height: 1.2;
-        margin-bottom: 0.45rem;
-    }
-
     .co-card-dark {
         background: #0f172a;
         color: #f8fafc;
         border-radius: 10px;
-        padding: 1rem 1.15rem;
-        margin-bottom: 0.85rem;
+        padding: 0.9rem 1.1rem;
+        margin-bottom: 0.75rem;
     }
     .co-kicker {
         font-size: 0.68rem;
@@ -110,7 +94,7 @@ st.markdown(
         letter-spacing: 0.06em;
         text-transform: uppercase;
         color: #64748b;
-        margin: 0.35rem 0 0.35rem 0;
+        margin: 0.3rem 0 0.3rem 0;
     }
     .co-muted { color: #64748b; font-size: 0.82rem; }
     .co-agent-pill {
@@ -118,21 +102,26 @@ st.markdown(
         background: #eef2ff;
         color: #3730a3;
         border-radius: 999px;
-        padding: 0.22rem 0.7rem;
+        padding: 0.2rem 0.65rem;
         font-size: 0.78rem;
         font-weight: 600;
-        margin: 0.35rem 0 0.5rem 0;
+        margin: 0.3rem 0 0.45rem 0;
     }
     .co-field-label {
         font-size: 0.8rem;
         font-weight: 600;
         color: #334155;
-        margin-bottom: 0.25rem;
+        margin-bottom: 0.2rem;
     }
 
-    div.stButton > button {
-        border-radius: 8px;
+    /* Compact toolbar buttons */
+    div[data-testid="column"] div.stButton > button {
+        border-radius: 6px;
         font-weight: 600;
+        font-size: 0.8rem;
+        padding-top: 0.25rem;
+        padding-bottom: 0.25rem;
+        min-height: 2rem;
         border: 1px solid #cbd5e1;
         background: #ffffff;
         color: #0f172a;
@@ -141,11 +130,6 @@ st.markdown(
         background: #1e293b;
         color: #ffffff;
         border: 1px solid #1e293b;
-    }
-    div.stButton > button:hover { border-color: #94a3b8; }
-    div.stButton > button[kind="primary"]:hover {
-        background: #0f172a;
-        border-color: #0f172a;
     }
     </style>
     """,
@@ -196,7 +180,10 @@ defaults = {
     "chat_messages": [],
     "left_open": True,
     "right_open": True,
-    "is_running": False,
+    # run lifecycle (never leave "running" stuck without escape)
+    "run_status": "idle",       # idle | running | success | error
+    "run_error": "",
+    "run_started_at": None,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -214,7 +201,16 @@ def reset_everything():
     st.session_state.insight_archive = []
     st.session_state.active_insight_id = None
     st.session_state.chat_messages = []
-    st.session_state.is_running = False
+    st.session_state.run_status = "idle"
+    st.session_state.run_error = ""
+    st.session_state.run_started_at = None
+
+
+def clear_run_state():
+    """Unstick UI after hang / disconnect / failed run."""
+    st.session_state.run_status = "idle"
+    st.session_state.run_error = ""
+    st.session_state.run_started_at = None
 
 
 def archive_insight(agent_name, text, career_request=""):
@@ -280,7 +276,10 @@ def kickoff_with_retry(crew, inputs, max_attempts=4):
             if attempt == max_attempts - 1:
                 raise error
             delay = delays[min(attempt, len(delays) - 1)]
-            st.warning(f"Temporary service issue. Retrying in {delay}s…")
+            st.warning(
+                f"Temporary API issue (attempt {attempt + 1}/{max_attempts}). "
+                f"Retrying in {delay}s…"
+            )
             time.sleep(delay)
 
 
@@ -324,12 +323,6 @@ def extract_result_text(result):
     if hasattr(result, "raw") and result.raw is not None:
         return str(result.raw)
     return str(result)
-
-
-def show_quota_error(error):
-    st.error("The selected provider hit a quota or usage limit.")
-    with st.expander("Details"):
-        st.code(str(error))
 
 
 def validate_inputs():
@@ -385,25 +378,38 @@ def render_modular_result(agent_name, text):
             st.markdown(text)
 
 
+# Auto-clear a stuck "running" flag older than 10 minutes
+if st.session_state.run_status == "running" and st.session_state.run_started_at:
+    try:
+        started = datetime.strptime(
+            st.session_state.run_started_at, "%Y-%m-%d %H:%M:%S"
+        )
+        if (datetime.now() - started).total_seconds() > 600:
+            st.session_state.run_status = "error"
+            st.session_state.run_error = (
+                "Previous run did not finish (timeout or disconnect). "
+                "You can run again."
+            )
+            st.session_state.run_started_at = None
+    except Exception:
+        clear_run_state()
+
 # ============================================================
-# LAYOUT WIDTHS
+# LAYOUT: only left panel | center | right panel (NO rails)
 # ============================================================
 left_open = st.session_state.left_open
 right_open = st.session_state.right_open
 
-widths = [0.32]
+widths = []
 if left_open:
-    widths.append(1.15)
-widths.append(2.5)
+    widths.append(1.2)
+widths.append(2.6)
 if right_open:
-    widths.append(1.15)
-widths.append(0.32)
+    widths.append(1.2)
 
-cols = st.columns(widths, gap="small")
+cols = st.columns(widths, gap="medium")
 
 idx = 0
-left_rail = cols[idx]
-idx += 1
 left_panel = None
 if left_open:
     left_panel = cols[idx]
@@ -413,59 +419,10 @@ idx += 1
 right_panel = None
 if right_open:
     right_panel = cols[idx]
-    idx += 1
-right_rail = cols[idx]
 
 MODEL_READY = False
 selected_agent = st.session_state.selected_agent
-
-# ============================================================
-# LEFT RAIL — icons only when panel is CLOSED
-# ============================================================
-with left_rail:
-    st.markdown('<div class="co-rail">', unsafe_allow_html=True)
-
-    if left_open:
-        if st.button(
-            "⟨",
-            key="toggle_left",
-            help="Collapse workspace",
-            use_container_width=True,
-        ):
-            st.session_state.left_open = False
-            st.rerun()
-        st.markdown(
-            '<div class="co-rail-label">Close</div>',
-            unsafe_allow_html=True,
-        )
-    else:
-        if st.button(
-            "☰",
-            key="toggle_left",
-            help="Open workspace (model and status)",
-            use_container_width=True,
-        ):
-            st.session_state.left_open = True
-            st.rerun()
-        st.markdown(
-            '<div class="co-rail-label">Workspace</div>',
-            unsafe_allow_html=True,
-        )
-
-        if st.button(
-            "◈",
-            key="rail_model",
-            help="Model settings",
-            use_container_width=True,
-        ):
-            st.session_state.left_open = True
-            st.rerun()
-        st.markdown(
-            '<div class="co-rail-label">Model</div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("</div>", unsafe_allow_html=True)
+run_busy = st.session_state.run_status == "running"
 
 # ============================================================
 # LEFT PANEL
@@ -474,10 +431,16 @@ if left_panel is not None:
     with left_panel:
         st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
 
-        st.markdown(
-            '<div class="co-section-label">Workspace</div>',
-            unsafe_allow_html=True,
-        )
+        h1, h2 = st.columns([5, 1])
+        with h1:
+            st.markdown(
+                '<div class="co-section-label">Workspace</div>',
+                unsafe_allow_html=True,
+            )
+        with h2:
+            if st.button("×", key="close_left", help="Hide workspace"):
+                st.session_state.left_open = False
+                st.rerun()
 
         MODEL_READY = render_model_selector(AGENTS, container=left_panel)
 
@@ -489,16 +452,11 @@ if left_panel is not None:
             st.success("Model ready")
         else:
             st.warning("Configure an API key")
-        st.caption(
-            "One agent runs per action. Outputs stay in Insight Archive."
-        )
+
+        st.caption("One agent per run. Results go to Insight Archive.")
 
         st.markdown("---")
-        if st.button(
-            "Reset workspace",
-            use_container_width=True,
-            key="reset_ws",
-        ):
+        if st.button("Reset workspace", use_container_width=True, key="reset_ws"):
             reset_everything()
             st.rerun()
 
@@ -513,131 +471,52 @@ else:
             MODEL_READY = False
 
 # ============================================================
-# RIGHT RAIL — icons only when panel is CLOSED
-# ============================================================
-with right_rail:
-    st.markdown('<div class="co-rail">', unsafe_allow_html=True)
-
-    if right_open:
-        if st.button(
-            "⟩",
-            key="toggle_right",
-            help="Collapse analysis panel",
-            use_container_width=True,
-        ):
-            st.session_state.right_open = False
-            st.rerun()
-        st.markdown(
-            '<div class="co-rail-label">Close</div>',
-            unsafe_allow_html=True,
-        )
-    else:
-        if st.button(
-            "☰",
-            key="toggle_right",
-            help="Open analysis panel",
-            use_container_width=True,
-        ):
-            st.session_state.right_open = True
-            st.rerun()
-        st.markdown(
-            '<div class="co-rail-label">Panel</div>',
-            unsafe_allow_html=True,
-        )
-
-        agent_hover = (
-            f"Analysis type — currently: {st.session_state.selected_agent}"
-        )
-        if st.button(
-            "◉",
-            key="rail_agent",
-            help=agent_hover,
-            use_container_width=True,
-        ):
-            st.session_state.right_open = True
-            st.rerun()
-        st.markdown(
-            '<div class="co-rail-label">Agent</div>',
-            unsafe_allow_html=True,
-        )
-
-        if st.button(
-            "▦",
-            key="rail_archive",
-            help="Insight Archive",
-            use_container_width=True,
-        ):
-            st.session_state.right_open = True
-            st.rerun()
-        st.markdown(
-            '<div class="co-rail-label">Archive</div>',
-            unsafe_allow_html=True,
-        )
-
-        if st.button(
-            "💬",
-            key="rail_brief",
-            help="Context briefing (optional)",
-            use_container_width=True,
-        ):
-            st.session_state.right_open = True
-            st.session_state.briefing_open = True
-            st.rerun()
-        st.markdown(
-            '<div class="co-rail-label">Briefing</div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ============================================================
 # RIGHT PANEL
 # ============================================================
 if right_panel is not None:
     with right_panel:
         st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
 
-        st.markdown(
-            '<div class="co-section-label">Analysis</div>',
-            unsafe_allow_html=True,
-        )
-
-        if st.session_state.is_running:
-            st.info(
-                f"Running **{st.session_state.selected_agent}**. "
-                "Agent selection is locked until this run finishes."
-            )
-            st.caption(
-                AGENT_DESCRIPTIONS.get(st.session_state.selected_agent, "")
-            )
-            selected_agent = st.session_state.selected_agent
-        else:
+        h1, h2 = st.columns([5, 1])
+        with h1:
             st.markdown(
-                '<div class="co-field-label">Analysis type</div>',
+                '<div class="co-section-label">Analysis</div>',
                 unsafe_allow_html=True,
             )
-            agent_names = list(AGENTS.keys())
-            try:
-                a_index = agent_names.index(st.session_state.selected_agent)
-            except ValueError:
-                a_index = 0
+        with h2:
+            if st.button("×", key="close_right", help="Hide analysis panel"):
+                st.session_state.right_open = False
+                st.rerun()
 
-            selected_agent = st.selectbox(
-                "Analysis type",
-                options=agent_names,
-                index=a_index,
-                label_visibility="collapsed",
-                key="agent_select_box",
-                help="Choose what to run before starting.",
-            )
+        st.markdown(
+            '<div class="co-field-label">Analysis type</div>',
+            unsafe_allow_html=True,
+        )
+        agent_names = list(AGENTS.keys())
+        try:
+            a_index = agent_names.index(st.session_state.selected_agent)
+        except ValueError:
+            a_index = 0
+
+        selected_agent = st.selectbox(
+            "Analysis type",
+            options=agent_names,
+            index=a_index,
+            label_visibility="collapsed",
+            key="agent_select_box",
+            disabled=run_busy,
+            help="Choose before running. Disabled only while a run is active.",
+        )
+        if not run_busy:
             st.session_state.selected_agent = selected_agent
-            st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
+        selected_agent = st.session_state.selected_agent
+        st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
 
         st.markdown(
             '<div class="co-section-label">Insight Archive</div>',
             unsafe_allow_html=True,
         )
-        st.caption("Previous outputs. Switching agents does not delete them.")
+        st.caption("Previous outputs are kept when you switch agents.")
 
         if not st.session_state.insight_archive:
             st.markdown(
@@ -663,7 +542,7 @@ if right_panel is not None:
             '<div class="co-section-label">Context briefing</div>',
             unsafe_allow_html=True,
         )
-        st.caption("Optional guidance for the agent. Not required to run.")
+        st.caption("Optional. Not required to run.")
 
         briefing_open = st.toggle(
             "Show briefing fields",
@@ -697,9 +576,7 @@ if right_panel is not None:
                     unsafe_allow_html=True,
                 )
                 for item in st.session_state.insight_archive[:3]:
-                    st.markdown(
-                        f"- **{item['agent']}** ({item['time']})"
-                    )
+                    st.markdown(f"- **{item['agent']}** ({item['time']})")
 
             user_note = st.chat_input("Add a short note for this run")
             if user_note:
@@ -725,15 +602,38 @@ else:
 with center:
     st.markdown('<div class="co-scroll">', unsafe_allow_html=True)
 
+    # Compact toolbar (replaces rails)
+    t1, t2, t3, t4 = st.columns([1.2, 1.2, 3, 1.4])
+    with t1:
+        label_l = "Hide model" if left_open else "Show model"
+        if st.button(label_l, key="tog_left", use_container_width=True):
+            st.session_state.left_open = not st.session_state.left_open
+            st.rerun()
+    with t2:
+        label_r = "Hide analysis" if right_open else "Show analysis"
+        if st.button(label_r, key="tog_right", use_container_width=True):
+            st.session_state.right_open = not st.session_state.right_open
+            st.rerun()
+    with t3:
+        st.caption(
+            f"Agent: **{selected_agent}**"
+            + (" · run active" if run_busy else "")
+        )
+    with t4:
+        if st.session_state.run_status in ("running", "error"):
+            if st.button("Clear status", key="clear_run", use_container_width=True):
+                clear_run_state()
+                st.rerun()
+
     st.markdown(
         """
         <div class="co-card-dark">
             <div class="co-kicker">CareerOps AI</div>
-            <div style="font-size:1.35rem;font-weight:700;margin:0.15rem 0 0 0;">
+            <div style="font-size:1.3rem;font-weight:700;margin:0.1rem 0 0 0;">
                 Career operations workspace
             </div>
-            <div style="color:#cbd5e1;font-size:0.88rem;margin-top:0.2rem;">
-                Use the side rails when panels are closed. Add CV and job, then run from the Run tab.
+            <div style="color:#cbd5e1;font-size:0.86rem;margin-top:0.15rem;">
+                Toggle panels above. Add CV and job, then use the Run tab.
             </div>
         </div>
         """,
@@ -746,11 +646,22 @@ with center:
     )
     st.caption(AGENT_DESCRIPTIONS.get(selected_agent, ""))
 
-    if st.session_state.is_running:
-        st.warning(
-            f"Analysis in progress: **{st.session_state.selected_agent}**. "
-            "Agent selection is locked until the run finishes."
+    # ---------- Run status (replaces stuck lock banner) ----------
+    if st.session_state.run_status == "running":
+        st.info(
+            f"Running **{st.session_state.selected_agent}**… "
+            "Wait for completion, or press **Clear status** if this is stuck."
         )
+        if st.session_state.run_started_at:
+            st.caption(f"Started at {st.session_state.run_started_at}")
+    elif st.session_state.run_status == "error":
+        st.error("The last run failed.")
+        if st.session_state.run_error:
+            with st.expander("Error details", expanded=True):
+                st.code(st.session_state.run_error)
+        st.caption("Fix the issue, then run again. Error handling is active.")
+    elif st.session_state.run_status == "success":
+        st.success("Last run completed. Output is below and in Insight Archive.")
 
     tab_cv, tab_job, tab_run = st.tabs(["CV", "Job description", "Run"])
 
@@ -823,30 +734,38 @@ with center:
         else:
             st.caption("No extra briefing — standard task for this agent.")
 
-        run_disabled = st.session_state.is_running
         run_clicked = st.button(
             f"Run {selected_agent}",
             type="primary",
             use_container_width=True,
-            disabled=run_disabled,
+            disabled=run_busy,
             key="run_main",
         )
 
-        if run_clicked and not st.session_state.is_running:
+        if run_clicked and not run_busy:
             if not MODEL_READY:
-                st.error(
+                st.session_state.run_status = "error"
+                st.session_state.run_error = (
                     "Selected model is not available. "
-                    "Open the left rail → Model and fix the API key."
+                    "Open Show model and configure a valid API key."
                 )
+                st.rerun()
             else:
                 errors = validate_inputs()
                 if errors:
                     for e in errors:
                         st.warning(e)
                 else:
-                    st.session_state.is_running = True
+                    st.session_state.run_status = "running"
+                    st.session_state.run_error = ""
+                    st.session_state.run_started_at = datetime.now().strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
                     try:
-                        with st.spinner(f"Running {selected_agent}…"):
+                        with st.spinner(
+                            f"Running {selected_agent}… "
+                            "Quota and temporary API errors are handled automatically."
+                        ):
                             result = run_selected_agent(
                                 agent_name=selected_agent,
                                 cv_text=st.session_state.cv_text,
@@ -864,20 +783,28 @@ with center:
                                 result_text,
                                 st.session_state.career_request,
                             )
-                            st.success("Complete. Saved to Insight Archive.")
+                            st.session_state.run_status = "success"
+                            st.session_state.run_error = ""
                     except Exception as error:
+                        st.session_state.run_status = "error"
                         if is_daily_quota_error(error):
-                            show_quota_error(error)
-                        else:
-                            st.error(
-                                "The agent could not complete this request."
+                            st.session_state.run_error = (
+                                "Provider quota / usage limit reached.\n\n"
+                                + str(error)
                             )
-                            with st.expander("Technical details"):
-                                st.code(str(error))
+                        else:
+                            st.session_state.run_error = str(error)
                     finally:
-                        st.session_state.is_running = False
+                        st.session_state.run_started_at = None
+                        # leave status as success or error; never leave "running"
+                        if st.session_state.run_status == "running":
+                            st.session_state.run_status = "error"
+                            st.session_state.run_error = (
+                                "Run ended unexpectedly without a result."
+                            )
                         st.rerun()
 
+    # Insight display
     active = get_active_insight()
     display_text = st.session_state.result
     display_agent = st.session_state.result_agent
