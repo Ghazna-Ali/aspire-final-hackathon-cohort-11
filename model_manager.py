@@ -1,6 +1,6 @@
+
 """
-Free-tier multi-provider LLM manager for CareerOps AI.
-Gemini + Groq + Cerebras only.
+Gemini-only LLM manager for CareerOps AI.
 """
 
 import os
@@ -8,136 +8,8 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
-import litellm
 import streamlit as st
 from crewai import LLM
-
-
-# ---------------------------------------------------------------------------
-# Message sanitizer
-#
-# CrewAI marks messages with a `cache_breakpoint` flag for prompt caching.
-# Its native providers strip the flag, but the LiteLLM path (used for Groq)
-# forwards it, and Groq rejects it:
-#   "'messages.0' : property 'cache_breakpoint' is unsupported"
-#
-# We strip it at several levels so it is caught whichever path a given
-# crewai / litellm version takes:
-#   0. crewai  mark_cache_breakpoint              (stop the flag being set at all)
-#   1. crewai  LLM._format_messages_for_provider  (where it should be stripped)
-#   2. litellm completion / acompletion           (entry points)
-#   3. litellm GroqChatConfig.transform_request   (last step before the HTTP call)
-#
-# SANITIZER_LAYERS lists which layers were installed (see sanitizer_status()).
-# ---------------------------------------------------------------------------
-_UNSUPPORTED_MSG_KEYS = {"cache_breakpoint"}
-# Kept on the litellm module so it survives Streamlit module reloads.
-SANITIZER_LAYERS = getattr(litellm, "_msg_sanitizer_layers", None) or []
-litellm._msg_sanitizer_layers = SANITIZER_LAYERS
-
-
-def _clean_content(content):
-    """Strip unsupported keys from structured content blocks (list of dicts)."""
-    if isinstance(content, list):
-        return [
-            {k: v for k, v in block.items() if k not in _UNSUPPORTED_MSG_KEYS}
-            if isinstance(block, dict)
-            else block
-            for block in content
-        ]
-    return content
-
-
-def _clean_messages(messages):
-    """Return a copy of `messages` without unsupported keys (input untouched)."""
-    if not isinstance(messages, list):
-        return messages
-    cleaned = []
-    for m in messages:
-        if isinstance(m, dict):
-            m = {k: v for k, v in m.items() if k not in _UNSUPPORTED_MSG_KEYS}
-            if "content" in m:
-                m["content"] = _clean_content(m["content"])
-        cleaned.append(m)
-    return cleaned
-
-
-def _install_message_sanitizer() -> None:
-    # Streamlit reruns this module often; only wrap once.
-    if getattr(litellm, "_msg_sanitizer_installed", False):
-        return
-
-    # 0) CrewAI: never set the flag (we only use Gemini / Groq / Cerebras,
-    #    none of which use it). Executors import this function at call time.
-    try:
-        import crewai.llms.cache as _cache
-
-        _cache.mark_cache_breakpoint = lambda message: message
-        SANITIZER_LAYERS.append("crewai.mark_cache_breakpoint")
-    except Exception:
-        pass
-
-    # 1) CrewAI: clean messages when they are formatted for the provider.
-    try:
-        from crewai.llm import LLM as _CrewLLM
-
-        _orig_fmt = _CrewLLM._format_messages_for_provider
-
-        def _safe_fmt(self, messages, *args, **kwargs):
-            return _orig_fmt(self, _clean_messages(messages), *args, **kwargs)
-
-        _CrewLLM._format_messages_for_provider = _safe_fmt
-        SANITIZER_LAYERS.append("crewai.format_messages")
-    except Exception:
-        pass
-
-    # 2) LiteLLM entry points.
-    _orig_completion = litellm.completion
-
-    def _safe_completion(*args, **kwargs):
-        if "messages" in kwargs:
-            kwargs["messages"] = _clean_messages(kwargs["messages"])
-        return _orig_completion(*args, **kwargs)
-
-    litellm.completion = _safe_completion
-    SANITIZER_LAYERS.append("litellm.completion")
-
-    if hasattr(litellm, "acompletion"):
-        _orig_acompletion = litellm.acompletion
-
-        async def _safe_acompletion(*args, **kwargs):
-            if "messages" in kwargs:
-                kwargs["messages"] = _clean_messages(kwargs["messages"])
-            return await _orig_acompletion(*args, **kwargs)
-
-        litellm.acompletion = _safe_acompletion
-
-    # 3) Last step before the request body is built for Groq.
-    try:
-        from litellm.llms.groq.chat.transformation import GroqChatConfig
-
-        _orig_transform = GroqChatConfig.transform_request
-
-        def _safe_transform(self, model, messages, *args, **kwargs):
-            return _orig_transform(self, model, _clean_messages(messages), *args, **kwargs)
-
-        GroqChatConfig.transform_request = _safe_transform
-        SANITIZER_LAYERS.append("groq.transform_request")
-    except Exception:
-        pass
-
-    litellm._msg_sanitizer_installed = True
-
-
-_install_message_sanitizer()
-
-
-def sanitizer_status() -> str:
-    """Human-readable status, e.g. to show in the Streamlit sidebar."""
-    if not SANITIZER_LAYERS:
-        return "cache_breakpoint sanitizer: NOT active"
-    return "cache_breakpoint sanitizer active: " + ", ".join(SANITIZER_LAYERS)
-
 
 PLACEHOLDER_VALUES = {
     "", "paste your api key here", "paste_your_api_key_here",
@@ -147,16 +19,10 @@ PLACEHOLDER_VALUES = {
 
 KEY_RULES = {
     "GEMINI_API_KEY": {
-        "min_len": 20, "max_len": 200, "prefixes": None,
-        "hint": "From https://aistudio.google.com/apikey (AIza, AQ., etc.).",
-    },
-    "GROQ_API_KEY": {
-        "min_len": 40, "max_len": 120, "prefixes": ["gsk_"],
-        "hint": "From https://console.groq.com/keys — starts with gsk_.",
-    },
-    "CEREBRAS_API_KEY": {
-        "min_len": 20, "max_len": 200, "prefixes": ["csk-"],
-        "hint": "From https://cloud.cerebras.ai — often starts with csk-.",
+        "min_len": 20,
+        "max_len": 200,
+        "prefixes": None,
+        "hint": "Get your key from https://aistudio.google.com/apikey",
     },
 }
 
@@ -177,59 +43,54 @@ class ModelSpec:
 
 MODEL_CATALOG: Dict[str, ModelSpec] = {
     "gemini_3_8_flash": ModelSpec(
-        "gemini", "Gemini 3.8 Flash", "gemini/gemini-3.8-flash",
-        "GEMINI_API_KEY", "Free tier",
+        "gemini",
+        "Gemini 3.8 Flash",
+        "gemini/gemini-3.8-flash",
+        "GEMINI_API_KEY",
+        "Free tier",
     ),
     "gemini_3_5_flash_lite": ModelSpec(
-        "gemini", "Gemini 3.5 Flash-Lite", "gemini/gemini-3.5-flash-lite",
-        "GEMINI_API_KEY", "Free tier",
+        "gemini",
+        "Gemini 3.5 Flash-Lite",
+        "gemini/gemini-3.5-flash-lite",
+        "GEMINI_API_KEY",
+        "Free tier",
     ),
     "gemini_2_5_flash": ModelSpec(
-        "gemini", "Gemini 2.5 Flash", "gemini/gemini-2.5-flash",
-        "GEMINI_API_KEY", "Free tier",
-    ),
-    "groq_gpt_oss_120b": ModelSpec(
-        "groq", "Groq GPT-OSS 120B", "groq/openai/gpt-oss-120b",
-        "GROQ_API_KEY", "Free tier",
-    ),
-    "groq_gpt_oss_20b": ModelSpec(
-        "groq", "Groq GPT-OSS 20B", "groq/openai/gpt-oss-20b",
-        "GROQ_API_KEY", "Free tier",
-    ),
-    "groq_qwen_3_8_27b": ModelSpec(
-        "groq", "Groq Qwen3.8 27B", "groq/qwen/qwen3.8-27b",
-        "GROQ_API_KEY", "Free tier",
-    ),
-    "cerebras_llama_3_3_70b": ModelSpec(
-        "cerebras", "Cerebras Llama 3.3 70B", "cerebras/llama-3.3-70b",
-        "CEREBRAS_API_KEY", "Free tier",
-    ),
-    "cerebras_llama_3_1_8b": ModelSpec(
-        "cerebras", "Cerebras Llama 3.1 8B", "cerebras/llama3.1-8b",
-        "CEREBRAS_API_KEY", "Free tier",
+        "gemini",
+        "Gemini 2.5 Flash",
+        "gemini/gemini-2.5-flash",
+        "GEMINI_API_KEY",
+        "Free tier",
     ),
 }
 
 DEFAULT_MODEL_PRIORITY = [
-    "gemini_3_8_flash", "gemini_3_5_flash_lite", "gemini_2_5_flash",
-    "groq_gpt_oss_120b", "groq_gpt_oss_20b", "groq_qwen_3_8_27b",
-    "cerebras_llama_3_3_70b", "cerebras_llama_3_1_8b",
+    "gemini_3_8_flash",
+    "gemini_3_5_flash_lite",
+    "gemini_2_5_flash",
 ]
 
 
 def _read_secret_or_env(name: str) -> Optional[str]:
     value = None
+
     try:
         value = st.secrets.get(name)
     except Exception:
         pass
+
     if value is None:
         value = os.getenv(name)
+
     if value is None:
         return None
+
     value = str(value).strip()
+
     if value.lower() in PLACEHOLDER_VALUES:
         return None
+
     return value
 
 
@@ -237,60 +98,96 @@ def get_api_key(secret_key: str) -> Optional[str]:
     return _read_secret_or_env(secret_key)
 
 
-def validate_api_key(secret_key: str, value: Optional[str] = None) -> Tuple[bool, str]:
+def validate_api_key(
+    secret_key: str,
+    value: Optional[str] = None,
+) -> Tuple[bool, str]:
+
     if value is None:
         value = get_api_key(secret_key)
+
     if not value:
-        return False, f"{secret_key} is missing. Add it in Streamlit Secrets."
+        return False, (
+            f"{secret_key} is missing. "
+            "Add it in Streamlit Secrets."
+        )
 
     rules = KEY_RULES.get(secret_key)
+
     if not rules:
         if len(value) < 10:
-            return False, f"{secret_key} looks too short ({len(value)} chars)."
-        return True, f"{secret_key} looks present ({len(value)} chars)."
+            return False, (
+                f"{secret_key} looks too short "
+                f"({len(value)} chars)."
+            )
+        return True, (
+            f"{secret_key} looks present "
+            f"({len(value)} chars)."
+        )
 
     length = len(value)
+
     if length < rules["min_len"] or length > rules["max_len"]:
         return False, (
-            f"{secret_key} length looks wrong ({length} chars). "
-            f"Expected about {rules['min_len']}–{rules['max_len']}. {rules['hint']}"
+            f"{secret_key} length looks wrong "
+            f"({length} chars). "
+            f"Expected about {rules['min_len']}–"
+            f"{rules['max_len']}. {rules['hint']}"
         )
 
     prefixes = rules.get("prefixes")
-    if prefixes and not any(value.startswith(p) for p in prefixes):
-        if secret_key == "CEREBRAS_API_KEY":
-            return True, f"{secret_key} format looks OK ({length} chars)."
-        expected = " or ".join(f"'{p}'" for p in prefixes)
+
+    if prefixes and not any(
+        value.startswith(p) for p in prefixes
+    ):
+        expected = " or ".join(
+            f"'{p}'" for p in prefixes
+        )
         return False, (
-            f"{secret_key} should start with {expected} but starts with "
-            f"'{value[:min(12, length)]}...'. {rules['hint']}"
+            f"{secret_key} should start with {expected}. "
+            f"{rules['hint']}"
         )
 
     if not re.match(r"^[\x21-\x7E]+$", value):
-        return False, f"{secret_key} contains unexpected characters. {rules['hint']}"
+        return False, (
+            f"{secret_key} contains unexpected characters. "
+            f"{rules['hint']}"
+        )
 
-    return True, f"{secret_key} format looks OK ({length} chars)."
+    return True, (
+        f"{secret_key} format looks OK ({length} chars)."
+    )
 
 
 def is_model_available(model_key: str) -> bool:
     if model_key not in MODEL_CATALOG:
         return False
-    ok, _ = validate_api_key(MODEL_CATALOG[model_key].secret_key)
+
+    ok, _ = validate_api_key(
+        MODEL_CATALOG[model_key].secret_key
+    )
+
     return ok
 
 
 def default_model_key() -> str:
     for key in DEFAULT_MODEL_PRIORITY:
-        if key in MODEL_CATALOG and is_model_available(key):
+        if is_model_available(key):
             return key
-    return next(iter(MODEL_CATALOG.keys()))
+
+    return DEFAULT_MODEL_PRIORITY[0]
 
 
 def model_label(model_key: str) -> str:
     spec = MODEL_CATALOG[model_key]
+
     if is_model_available(model_key):
         return f"🟢 {spec.display_name} • {spec.tier}"
-    return f"⚪ {spec.display_name} • API key missing/invalid"
+
+    return (
+        f"⚪ {spec.display_name} • "
+        "API key missing/invalid"
+    )
 
 
 def build_llm(model_key: str) -> LLM:
@@ -299,15 +196,28 @@ def build_llm(model_key: str) -> LLM:
 
     spec = MODEL_CATALOG[model_key]
     api_key = get_api_key(spec.secret_key)
-    ok, message = validate_api_key(spec.secret_key, api_key)
+
+    ok, message = validate_api_key(
+        spec.secret_key,
+        api_key,
+    )
+
     if not ok:
         raise ValueError(message)
 
-    return LLM(model=spec.crewai_model, api_key=api_key, temperature=0.2)
+    return LLM(
+        model=spec.crewai_model,
+        api_key=api_key,
+        temperature=0.2,
+    )
 
 
-def configure_agents(agents: Dict[str, object], model_key: str) -> None:
+def configure_agents(
+    agents: Dict[str, object],
+    model_key: str,
+) -> None:
     llm = build_llm(model_key)
+
     for agent in agents.values():
         agent.llm = llm
 
