@@ -670,7 +670,7 @@ with center:
     with c2:
         label_r = "Hide Analysis" if right_open else "Show Analysis"
 
-        left_space, button_area, right_space = st.columns([0.2, 1, 0.2])
+        left_space, button_area, right_space = st.columns([1.2, 1, 1.2])
 
         with button_area:
             if st.button(
