@@ -3,7 +3,6 @@ from model_manager import (
     MODEL_CATALOG,
     configure_agents,
     default_model_key,
-    is_model_available,
     model_label,
     selected_model_info,
     validate_api_key,
@@ -12,13 +11,12 @@ from model_manager import (
 
 def render_model_selector(agents, container=None):
     """
-    Render model picker into `container` (e.g. a column).
-    If container is None, uses st.sidebar (legacy).
+    Render model picker into `container` (column) or sidebar if None.
     Returns True when the selected model is ready to run.
     """
     ui = container if container is not None else st.sidebar
 
-    ui.markdown("### AI Model")
+    ui.markdown("##### Model")
 
     keys = list(MODEL_CATALOG.keys())
     preferred = default_model_key()
