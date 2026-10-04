@@ -3,6 +3,7 @@ import re
 import time
 import tempfile
 import uuid
+import threading
 from datetime import datetime
 
 
@@ -332,6 +333,7 @@ defaults = {
     "run_status": "idle",
     "run_error": "",
     "run_started_at": None,
+    "job_id": None,
 }
 
 for k, v in defaults.items():
@@ -357,12 +359,16 @@ def reset_everything():
     st.session_state.run_status = "idle"
     st.session_state.run_error = ""
     st.session_state.run_started_at = None
+    _job_discard(st.session_state.get("job_id"))
+    st.session_state.job_id = None
 
 
 def clear_run_state():
     st.session_state.run_status = "idle"
     st.session_state.run_error = ""
     st.session_state.run_started_at = None
+    _job_discard(st.session_state.get("job_id"))
+    st.session_state.job_id = None
 
 
 def archive_insight(agent_name, text, career_request=""):
@@ -396,6 +402,228 @@ def get_active_insight():
             return item
 
     return None
+
+
+# ============================================================
+# BACKGROUND RUNS
+# ============================================================
+# Streamlit re-executes this whole script on every click (closing a panel,
+# moving a slider...). A run that lives *inside* the script is interrupted by
+# that rerun. So the agent runs in a background thread instead, and the script
+# only starts it, polls it, and collects the result.
+
+@st.cache_resource
+def _job_store():
+    return {"lock": threading.Lock(), "jobs": {}}
+
+
+def _job_get(job_id):
+    store = _job_store()
+    with store["lock"]:
+        job = store["jobs"].get(job_id)
+        return dict(job) if job else None
+
+
+def _job_update(job_id, **fields):
+    store = _job_store()
+    with store["lock"]:
+        job = store["jobs"].get(job_id)
+        if job is not None:
+            job.update(fields)
+
+
+def _job_discard(job_id):
+    if not job_id:
+        return
+    store = _job_store()
+    with store["lock"]:
+        store["jobs"].pop(job_id, None)
+
+
+def _job_worker(
+    job_id,
+    agent_name,
+    cv_text,
+    job_description,
+    career_request,
+):
+    # Runs on a background thread: must not call any st.* function.
+    try:
+        result = run_selected_agent(
+            agent_name=agent_name,
+            cv_text=cv_text,
+            job_description=job_description,
+            career_request=career_request,
+            notify=lambda message: _job_update(
+                job_id, note=message
+            ),
+        )
+
+        text = extract_result_text(result)
+
+        if not str(text).strip():
+            _job_update(
+                job_id,
+                status="error",
+                error=(
+                    "The agent finished but returned "
+                    "no text. Please run it again."
+                ),
+            )
+        else:
+            _job_update(
+                job_id,
+                status="done",
+                result_text=text,
+            )
+
+    except Exception as error:
+
+        if is_daily_quota_error(error):
+            message = (
+                "Gemini quota / usage limit reached.\n\n"
+                + str(error)
+            )
+        else:
+            message = str(error)
+
+        _job_update(
+            job_id,
+            status="error",
+            error=message or error.__class__.__name__,
+        )
+
+
+def start_job(
+    agent_name,
+    cv_text,
+    job_description,
+    career_request,
+):
+    job_id = str(uuid.uuid4())
+
+    store = _job_store()
+    with store["lock"]:
+        store["jobs"][job_id] = {
+            "status": "running",
+            "agent": agent_name,
+            "career_request": career_request,
+            "note": "",
+            "result_text": "",
+            "error": "",
+        }
+
+    st.session_state.job_id = job_id
+    st.session_state.run_status = "running"
+    st.session_state.run_error = ""
+    st.session_state.run_started_at = (
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+
+    threading.Thread(
+        target=_job_worker,
+        args=(
+            job_id,
+            agent_name,
+            cv_text,
+            job_description,
+            career_request,
+        ),
+        daemon=True,
+        name=f"careerops-run-{job_id[:8]}",
+    ).start()
+
+
+def collect_finished_job():
+    """Move a finished background run into session state."""
+
+    if st.session_state.run_status != "running":
+        return
+
+    job_id = st.session_state.job_id
+    job = _job_get(job_id) if job_id else None
+
+    if job is None:
+        st.session_state.run_status = "error"
+        st.session_state.run_error = (
+            "This run was lost (the app restarted or "
+            "the status was cleared). Please run it again."
+        )
+        st.session_state.run_started_at = None
+        st.session_state.job_id = None
+        return
+
+    if job["status"] == "running":
+        return
+
+    if job["status"] == "done":
+
+        text = job["result_text"]
+
+        st.session_state.result = text
+        st.session_state.result_agent = job["agent"]
+        st.session_state.last_run_time = (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        )
+
+        archive_insight(
+            job["agent"],
+            text,
+            job["career_request"],
+        )
+
+        st.session_state.run_status = "success"
+        st.session_state.run_error = ""
+
+    else:
+
+        st.session_state.run_status = "error"
+        st.session_state.run_error = job["error"]
+
+    st.session_state.run_started_at = None
+    st.session_state.job_id = None
+    _job_discard(job_id)
+
+
+@st.fragment(run_every=2)
+def run_watcher():
+    """Live banner shown while a run is active.
+
+    It refreshes itself every 2 seconds, independent of the rest of the page,
+    and triggers a full rerun as soon as the background run has finished.
+    """
+
+    job_id = st.session_state.job_id
+    job = _job_get(job_id) if job_id else None
+
+    if job is None or job["status"] != "running":
+        st.rerun()
+
+    st.info(
+        f"Running **{st.session_state.selected_agent}**… "
+        "You can close or resize panels - the run "
+        "continues in the background. Press "
+        "**Clear status** to stop waiting if it is stuck."
+    )
+
+    started = st.session_state.run_started_at
+
+    if started:
+        try:
+            elapsed = int(
+                (
+                    datetime.now()
+                    - datetime.strptime(
+                        started, "%Y-%m-%d %H:%M:%S"
+                    )
+                ).total_seconds()
+            )
+            st.caption(f"Started at {started} · {elapsed}s elapsed")
+        except Exception:
+            st.caption(f"Started at {started}")
+
+    if job and job.get("note"):
+        st.warning(job["note"])
 
 
 # ============================================================
@@ -458,6 +686,7 @@ def kickoff_with_retry(
     crew,
     inputs,
     max_attempts=4,
+    notify=None,
 ):
     delays = [5, 15, 30]
 
@@ -486,11 +715,16 @@ def kickoff_with_retry(
                 )
             ]
 
-            st.warning(
+            message = (
                 f"Temporary API issue "
                 f"(attempt {attempt + 1}/{max_attempts}). "
                 f"Retrying in {delay}s…"
             )
+
+            if notify is not None:
+                notify(message)
+            else:
+                st.warning(message)
 
             time.sleep(delay)
 
@@ -528,6 +762,7 @@ def run_selected_agent(
     cv_text,
     job_description,
     career_request,
+    notify=None,
 ):
 
     crew = create_single_agent_crew(
@@ -569,6 +804,7 @@ def run_selected_agent(
     return kickoff_with_retry(
         crew,
         inputs,
+        notify=notify,
     )
 
 
@@ -750,6 +986,9 @@ def render_modular_result(
             st.markdown(text)
 
 
+collect_finished_job()
+
+
 # ============================================================
 # STALE RUN DETECTION
 # ============================================================
@@ -781,6 +1020,9 @@ if (
             )
 
             st.session_state.run_started_at = None
+
+            _job_discard(st.session_state.job_id)
+            st.session_state.job_id = None
 
     except Exception:
         clear_run_state()
@@ -1422,19 +1664,7 @@ with center:
 
     if st.session_state.run_status == "running":
 
-        st.info(
-            f"Running "
-            f"**{st.session_state.selected_agent}**… "
-            "Wait for completion, or press "
-            "**Clear status** if this is stuck."
-        )
-
-        if st.session_state.run_started_at:
-
-            st.caption(
-                "Started at "
-                f"{st.session_state.run_started_at}"
-            )
+        run_watcher()
 
     elif st.session_state.run_status == "error":
 
@@ -1670,114 +1900,19 @@ with center:
 
                 else:
 
-                    st.session_state.run_status = (
-                        "running"
+                    start_job(
+                        agent_name=selected_agent,
+                        cv_text=st.session_state.cv_text,
+                        job_description=(
+                            st.session_state.job_description
+                        ),
+                        career_request=(
+                            st.session_state.career_request
+                        ),
                     )
 
-                    st.session_state.run_error = ""
+                    st.rerun()
 
-                    st.session_state.run_started_at = (
-                        datetime.now().strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        )
-                    )
-
-                    try:
-
-                        with st.spinner(
-                            f"Running {selected_agent}… "
-                            "Temporary API errors are "
-                            "handled automatically."
-                        ):
-
-                            result = run_selected_agent(
-                                agent_name=selected_agent,
-                                cv_text=(
-                                    st.session_state.cv_text
-                                ),
-                                job_description=(
-                                    st.session_state.job_description
-                                ),
-                                career_request=(
-                                    st.session_state.career_request
-                                ),
-                            )
-
-                            result_text = (
-                                extract_result_text(
-                                    result
-                                )
-                            )
-
-                            st.session_state.result = (
-                                result_text
-                            )
-
-                            st.session_state.result_agent = (
-                                selected_agent
-                            )
-
-                            st.session_state.last_run_time = (
-                                datetime.now().strftime(
-                                    "%Y-%m-%d %H:%M:%S"
-                                )
-                            )
-
-                            archive_insight(
-                                selected_agent,
-                                result_text,
-                                st.session_state.career_request,
-                            )
-
-                            st.session_state.run_status = (
-                                "success"
-                            )
-
-                            st.session_state.run_error = ""
-
-                    except Exception as error:
-
-                        st.session_state.run_status = (
-                            "error"
-                        )
-
-                        if is_daily_quota_error(
-                            error
-                        ):
-
-                            st.session_state.run_error = (
-                                "Gemini quota / usage "
-                                "limit reached.\n\n"
-                                + str(error)
-                            )
-
-                        else:
-
-                            st.session_state.run_error = (
-                                str(error)
-                            )
-
-                    finally:
-
-                        st.session_state.run_started_at = (
-                            None
-                        )
-
-                        if (
-                            st.session_state.run_status
-                            == "running"
-                        ):
-
-                            st.session_state.run_status = (
-                                "error"
-                            )
-
-                            st.session_state.run_error = (
-                                "Run ended unexpectedly "
-                                "without a result."
-                            )
-
-                        st.rerun()
 
 
     # ========================================================
