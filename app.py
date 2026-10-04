@@ -1,4 +1,3 @@
-
 import os
 import re
 import time
@@ -42,6 +41,24 @@ from model_manager import (
     default_model_key,
     configure_agents,
 )
+
+
+# ============================================================
+# HTML HELPER
+# ============================================================
+
+def html_block(html):
+    """Flatten an HTML snippet onto one line for st.markdown.
+
+    Markdown ends an HTML block at the first blank line, and any line that is
+    still indented 4+ spaces afterwards becomes a *code block* - which shows
+    the raw HTML as text. Collapsing the whitespace avoids both problems.
+    """
+    return " ".join(
+        line.strip()
+        for line in str(html).splitlines()
+        if line.strip()
+    )
 
 
 # ============================================================
@@ -1251,7 +1268,7 @@ with center:
     # ========================================================
 
     st.markdown(
-        """
+        html_block("""
         <div style="
             background: linear-gradient(
                 135deg,
@@ -1303,7 +1320,7 @@ with center:
                 </strong>.
             </div>
         </div>
-        """,
+        """),
         unsafe_allow_html=True,
     )
     
