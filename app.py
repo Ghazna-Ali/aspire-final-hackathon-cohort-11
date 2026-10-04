@@ -651,7 +651,7 @@ with center:
         """
         <div class="co-hero">
             <div class="co-kicker">CareerOps AI</div>
-            <div class="co-hero-title">Career operations workspace</div>
+            <div class="co-hero-title">Career Assistant AI</div>
             <p class="co-hero-sub">
                 Configure the model in <strong>Settings</strong>.
                 Choose an agent and review past results in <strong>Analysis</strong>.
